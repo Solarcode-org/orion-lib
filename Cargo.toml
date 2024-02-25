@@ -15,4 +15,4 @@ categories = ["compilers"]
 
 [dependencies]
 lazy_static = "1.4.0"
-logos = "0.13.0"
+logos = "0.14.0"
