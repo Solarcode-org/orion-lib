@@ -10,10 +10,10 @@ use crate::parser::ASTNode;
 #[derive(Debug, Clone)]
 pub enum FunctionType {
     /// Functions that take in input but have no output.
-    Printic(fn(Box<ASTNode>) -> ()),
+    Printic(fn(ASTNode) -> ()),
 
     /// Functions that take in input and have output.
-    Inputic(fn(Box<ASTNode>) -> Result<String, String>),
+    Inputic(fn(ASTNode) -> Result<String, String>),
 }
 
 lazy_static! {
@@ -34,14 +34,14 @@ fn to_string(token: &ASTNode) -> String {
     }
 }
 
-fn get_args(tokens: Box<ASTNode>) -> Vec<ASTNode> {
-    match *tokens {
+fn get_args(tokens: ASTNode) -> Vec<ASTNode> {
+    match tokens {
         ASTNode::Args(args) => args.to_vec(),
         arg => vec![arg],
     }
 }
 
-fn say(tokens: Box<ASTNode>) {
+fn say(tokens: ASTNode) {
     let args = get_args(tokens);
 
     for arg in args {
@@ -53,7 +53,7 @@ fn say(tokens: Box<ASTNode>) {
     println!();
 }
 
-fn ask(tokens: Box<ASTNode>) -> Result<String, String> {
+fn ask(tokens: ASTNode) -> Result<String, String> {
     let args = get_args(tokens);
     let args_no = 1;
 
@@ -85,5 +85,5 @@ fn ask(tokens: Box<ASTNode>) -> Result<String, String> {
         }
     }
 
-    return Ok(inp);
+    Ok(inp)
 }

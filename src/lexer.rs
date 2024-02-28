@@ -53,7 +53,7 @@ pub enum Tokens {
     Number(f64),
 
     /// String.
-    #[regex(r#""([^"\\]|\\["\\bnfrt]|u[a-fA-F0-9]{4})*""#, |lex| lex.slice().replace("\"", "").to_owned())]
+    #[regex(r#""([^"\\]|\\["\\bnfrt]|u[a-fA-F0-9]{4})*""#, |lex| lex.slice().replace('\"', "").to_owned())]
     String(String),
 
     /// Identifier a.k.a functions, variables, names, etc.

@@ -11,8 +11,13 @@ use crate::{
 /// Abstract Syntax Tree (AST) for Orion
 #[derive(Debug, Clone)]
 pub enum ASTNode {
-    Func( FunctionType, Box<ASTNode>),
-    Args( Vec<ASTNode>),
+    /// The function node.
+    Func(FunctionType, Box<ASTNode>),
+
+    /// The arguments list node.
+    Args(Vec<ASTNode>),
+
+    /// The string node.
     String(String)
 }
 
@@ -21,80 +26,18 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
     let tokens_lex = Tokens::lexer(&line);
     let mut args_switch = false;
 
-    fn default(_args: Box<ASTNode>) {}
+    fn default(_args: ASTNode) {}
 
-    let mut func = &FunctionType::Printic(default);
+    let mut func = FunctionType::Printic(default);
     let mut args = vec![];
     let mut ret = ASTNode::String(String::new());
-
-    // while let Some(token) = tokens_lex.next() {
-    //     let token = match token {
-    //         Ok(t) => t,
-    //         Err(_) => {
-    //             error(
-    //                 format!("Unexpected token >> {} <<", tokens_lex.slice()),
-    //                 line_no,
-    //             );
-    //         }
-    //     };
-    //
-    //     match token {
-    //         Tokens::Ident(ident) => {
-    //             let functions = FUNCTIONS.lock().unwrap();
-    //
-    //             if functions.contains_key(&ident) {
-    //                 let func = functions.get(&ident).unwrap();
-    //
-    //                 push(
-    //                     &mut expr,
-    //                     ASTNode::Func(func.clone()),
-    //                     args_switch,
-    //                     &mut args,
-    //                 );
-    //             } else {
-    //                 push(&mut expr, ASTNode::Ident(ident), args_switch, &mut args)
-    //             }
-    //         }
-    //         Tokens::ParenOpen => args_switch = true,
-    //         Tokens::ParenClose => {
-    //             args_switch = false;
-    //             push(
-    //                 &mut expr,
-    //                 ASTNode::ArgExpr(args.clone()),
-    //                 args_switch,
-    //                 &mut args,
-    //             )
-    //         }
-    //         Tokens::String(s) => {
-    //             let s = s.replace("\\n", "\n");
-    //             let s = s.replace("\\r", "\r");
-    //             let s = s.replace("\\t", "\t");
-    //             let s = s.replace("\\\"", "\"");
-    //
-    //             push(
-    //                 &mut expr,
-    //                 ASTNode::String(s.to_string()),
-    //                 args_switch,
-    //                 &mut args,
-    //             );
-    //         }
-    //         _ => {}
-    //     }
-    // }
-    //
-    // let ret = AST {
-    //     expr: ASTNode::ArgExpr(expr),
-    // };
-    //
-    // // println!("{:?}", ret);
 
     for token in tokens_lex {
         let token = match token {
             Ok(t) => t,
             Err(_) => {
-                let token = tokens_lex.slice();
                 error(
-                    format!("Unexpected token >> {} <<", token),
+                    "Unexpected token".to_string(),
                     line_no,
                 );
             }
@@ -102,12 +45,10 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
 
         match token {
             Tokens::Ident(ident) => {
-                let functions = FUNCTIONS.lock().unwrap().clone();
+                let functions = FUNCTIONS.lock().unwrap();
 
                 if functions.contains_key(&ident) {
-                    let func_ = functions.get(&ident).unwrap();
-
-                    func = func_
+                    func = functions.get(&ident).unwrap().clone();
                 } else {
                    todo!()
                 }
@@ -127,6 +68,8 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
 
                 if args_switch {
                     args.push(ASTNode::String(s));
+                } else {
+                    ret = ASTNode::String(s);
                 }
             }
             _ => todo!()
@@ -153,9 +96,11 @@ mod tests {
     fn test_ast_string() {
         let ast = parse("\"Hello\"".to_string(), 0);
 
+        println!("{:?}", ast);
+
         match ast {
             ASTNode::String(s) => {
-                if s != String::from("Hello") {
+                if s != *"Hello" {
                     panic!("Must be `Hello`")
                 }
             }

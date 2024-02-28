@@ -58,17 +58,15 @@ pub fn run_contents(contents: String) {
 }
 
 fn run(ast: ASTNode, line: usize) {
-    match ast {
-        ASTNode::Func(f, args) => {
-            match f {
-                orion::FunctionType::Printic(f) => f(args),
-                orion::FunctionType::Inputic(f) => {
-                    try_error(f(args), line);
-                }
-            };
-        }
-        _ => {}
-    }
+    if let ASTNode::Func(f, args) = ast {
+         match f {
+             orion::FunctionType::Printic(f) => f(*args),
+             orion::FunctionType::Inputic(f) => {
+                 try_error(f(*args), line);
+             }
+       };
+     }
+
 }
 
 #[cfg(test)]
@@ -80,3 +78,4 @@ mod tests {
         run_contents("say(\"Hello!\")".to_string());
     }
 }
+
