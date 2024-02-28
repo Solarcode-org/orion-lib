@@ -10,10 +10,10 @@ use crate::parser::ASTNode;
 #[derive(Debug, Clone)]
 pub enum FunctionType {
     /// Functions that take in input but have no output.
-    Printic(fn(Vec<ASTNode>) -> ()),
+    Printic(fn(Box<ASTNode>) -> ()),
 
     /// Functions that take in input and have output.
-    Inputic(fn(Vec<ASTNode>) -> Result<String, String>),
+    Inputic(fn(Box<ASTNode>) -> Result<String, String>),
 }
 
 lazy_static! {
@@ -28,15 +28,24 @@ lazy_static! {
 
 fn to_string(token: &ASTNode) -> String {
     match &token {
-        ASTNode::String(s) => s.to_owned(),
-        ASTNode::Func(f) => format!("{f:?}"),
+        ASTNode::String(s) => s.to_string(),
+        ASTNode::Func(f, args) => format!("{f:?}, {args:?}"),
         _ => "".to_string(),
     }
 }
 
-fn say(tokens: Vec<ASTNode>) -> () {
-    for token in tokens {
-        print!("{}", to_string(&token));
+fn get_args(tokens: Box<ASTNode>) -> Vec<ASTNode> {
+    match *tokens {
+        ASTNode::Args(args) => args.to_vec(),
+        arg => vec![arg],
+    }
+}
+
+fn say(tokens: Box<ASTNode>) {
+    let args = get_args(tokens);
+
+    for arg in args {
+        print!("{}", to_string(&arg));
 
         print!(" ")
     }
@@ -44,20 +53,21 @@ fn say(tokens: Vec<ASTNode>) -> () {
     println!();
 }
 
-fn ask(tokens: Vec<ASTNode>) -> Result<String, String> {
+fn ask(tokens: Box<ASTNode>) -> Result<String, String> {
+    let args = get_args(tokens);
     let args_no = 1;
 
-    if tokens.len() < args_no {
+    if args.len() < args_no {
         return Err("ask: Not enough arguments!".to_string());
     }
 
-    if tokens.len() > args_no {
+    if args.len() > args_no {
         return Err("ask: Too many arguments!".to_string());
     }
 
-    let token = to_string(&tokens[0]);
+    let prompt = to_string(&args[0]);
 
-    print!("{token}");
+    print!("{prompt}");
 
     match stdout().flush() {
         Ok(_) => {}

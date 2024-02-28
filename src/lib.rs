@@ -35,7 +35,7 @@ pub mod parser;
 
 /// Run the contents of an Orion file.
 ///
-/// NOTE: The file's CONTENTs must be provided, not its PATH.
+/// NOTE: The file's CONTENT must be provided, not its PATH.
 ///
 /// ## Example
 ///
@@ -50,26 +50,16 @@ pub fn run_contents(contents: String) {
 
         // println!("{:?}", ast.expr);
 
-        run_expr(
-            match ast.expr {
-                ASTNode::ArgExpr(expr) => expr,
-                _ => {
-                    vec![]
-                }
-            },
+        run(
+            ast,
             count,
         );
     }
 }
 
-fn run_expr(expr: Vec<ASTNode>, line: usize) {
-    match &expr[0] {
-        ASTNode::Func(f) => {
-            let args = match &expr[1] {
-                ASTNode::ArgExpr(args) => args.to_owned(),
-                _ => vec![],
-            };
-
+fn run(ast: ASTNode, line: usize) {
+    match ast {
+        ASTNode::Func(f, args) => {
             match f {
                 orion::FunctionType::Printic(f) => f(args),
                 orion::FunctionType::Inputic(f) => {
@@ -77,7 +67,6 @@ fn run_expr(expr: Vec<ASTNode>, line: usize) {
                 }
             };
         }
-        ASTNode::ArgExpr(args) => run_expr(args.to_owned(), line),
         _ => {}
     }
 }

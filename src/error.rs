@@ -1,6 +1,6 @@
 //! The error module.
 
-/// Simple error on line.
+/// Simple error on a line.
 pub fn error(msg: String, line: usize) -> ! {
     panic!("Error on line {}: {}!", line, msg);
 }
