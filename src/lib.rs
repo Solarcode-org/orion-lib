@@ -46,9 +46,7 @@ pub mod parser;
 /// ```
 pub fn run_contents(contents: String) {
     for (count, line) in contents.lines().enumerate() {
-        let ast = parse(line.to_string(), count);
-
-        // println!("{:?}", ast.expr);
+        let ast = parse(line.to_string(), count + 1);
 
         run(
             ast,
@@ -57,16 +55,20 @@ pub fn run_contents(contents: String) {
     }
 }
 
-fn run(ast: ASTNode, line: usize) {
+fn run(ast: ASTNode, line: usize) -> Option<String> {
     if let ASTNode::Func(f, args) = ast {
-         match f {
-             orion::FunctionType::Printic(f) => f(*args),
-             orion::FunctionType::Inputic(f) => {
-                 try_error(f(*args), line);
-             }
-       };
-     }
-
+        match f {
+            orion::FunctionType::Printic(f) => {
+                f(*args);
+                None
+            },
+            orion::FunctionType::Inputic(f) => {
+                Some(try_error(f(*args), line))
+            }
+        }
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

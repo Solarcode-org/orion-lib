@@ -1,8 +1,8 @@
 //! The error module.
 
 /// Simple error on a line.
-pub fn error(msg: String, line: usize) -> ! {
-    panic!("Error on line {}: {}!", line, msg);
+pub fn error<T: ToString>(msg: T, line: usize) -> ! {
+    panic!("Error on line {}: {}!", line, msg.to_string());
 }
 
 /// Tries result.

@@ -1,8 +1,8 @@
 //! The Orion definitions.
 
-use std::io::{stdin, Write};
-use std::sync::Mutex;
 use std::{collections::HashMap, io::stdout};
+use std::io::{stdin, Write};
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::parser::ASTNode;
 
@@ -16,14 +16,41 @@ pub enum FunctionType {
     Inputic(fn(ASTNode) -> Result<String, String>),
 }
 
+/// Variable type.
+#[derive(Debug, Clone)]
+pub enum VariableType {
+    /// String variables.
+    String(String),
+    /// Number variables.
+    Number(f64),
+    /// None.
+    None
+}
+
 lazy_static! {
     /// Functions for Orion.
-    pub static ref FUNCTIONS: Mutex<HashMap<String, FunctionType>> = {
+    pub static ref FUNCTIONS: RwLock<HashMap<String, FunctionType>> = {
         let mut m = HashMap::new();
         m.insert("say".to_string(), FunctionType::Printic(say));
         m.insert("ask".to_string(), FunctionType::Inputic(ask));
-        Mutex::new(m)
+        RwLock::new(m)
     };
+    /// Functions for Orion.
+    pub static ref VARIABLES: RwLock<HashMap<String, VariableType>> = {
+        let mut m = HashMap::new();
+        m.insert("__env_version".to_string(), VariableType::String(env!("CARGO_PKG_VERSION").to_string()));
+        RwLock::new(m)
+    };
+}
+
+pub(crate) fn read_functions() -> RwLockReadGuard<'static, HashMap<String, FunctionType>> {
+    return FUNCTIONS.read().unwrap();
+}
+pub(crate) fn read_variables() -> RwLockReadGuard<'static, HashMap<String, VariableType>> {
+    return VARIABLES.read().unwrap();
+}
+pub(crate) fn write_variables() -> RwLockWriteGuard<'static, HashMap<String, VariableType>> {
+    return VARIABLES.write().unwrap();
 }
 
 fn to_string(token: &ASTNode) -> String {
@@ -85,5 +112,5 @@ fn ask(tokens: ASTNode) -> Result<String, String> {
         }
     }
 
-    Ok(inp)
+    Ok(inp.trim().to_string())
 }

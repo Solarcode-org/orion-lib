@@ -63,6 +63,10 @@ pub enum Tokens {
     /// Equals.
     #[token("=")]
     Equals,
+
+    /// Let Keyword
+    #[token("let")]
+    Let,
 }
 
 #[cfg(test)]
@@ -137,5 +141,10 @@ mod tests {
     #[test]
     fn check_equals() {
         check("=", Tokens::Equals);
+    }
+
+    #[test]
+    fn check_let() {
+        check("let", Tokens::Let);
     }
 }
