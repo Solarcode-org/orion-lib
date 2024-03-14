@@ -69,6 +69,22 @@ pub enum Tokens {
     /// Let Keyword
     #[token("let")]
     Let,
+
+    /// Plus
+    #[token("+")]
+    Plus,
+
+    /// Minus
+    #[token("-")]
+    Minus,
+
+    /// Multiply
+    #[token("*")]
+    Multiply,
+
+    /// Divide
+    #[token("/")]
+    Divide,
 }
 
 #[cfg(test)]
@@ -148,5 +164,22 @@ mod tests {
     #[test]
     fn check_let() {
         check("let", Tokens::Let);
+    }
+
+    #[test]
+    fn check_plus() {
+        check("+", Tokens::Plus);
+    }
+    #[test]
+    fn check_minus() {
+        check("-", Tokens::Minus);
+    }
+    #[test]
+    fn check_multiply() {
+        check("*", Tokens::Multiply);
+    }
+    #[test]
+    fn check_divide() {
+        check("/", Tokens::Divide);
     }
 }

@@ -1,7 +1,7 @@
-say("Hello from Orion version", __env_version)
+# say("Hello from Orion version", __env_version)
 
-let name = ask("What is your name? ")
-say("Hello", name)
+# let name = ask("What is your name? ")
+# say("Hello", name)
 
-let s = sum(1, 1)
-say("1 + 1 is", s)
+let s = 2 * 56
+say("2 * 56 is", s)

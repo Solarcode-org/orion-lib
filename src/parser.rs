@@ -46,6 +46,7 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
     let mut comma = true;
     let mut ret = ASTNode::String(String::new());
     let mut var_on = false;
+    let mut operator = false;
 
     for token in tokens_lex {
         let token = match token {
@@ -154,6 +155,60 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
                 } else {
                     ret = ASTNode::Number(n);
                 }
+                
+                if operator {
+                    args_switch = false;
+                    let func = ASTNode::Func(func.clone(),
+                                             Box::new(ASTNode::Args(args.clone())));
+
+                    if args_switch {
+                        push(&mut args, &mut comma, func, line_no);
+                    } else {
+                        ret = func;
+                    }
+
+                    args.clear();
+                }
+            }
+            Tokens::Plus => {
+                let functions = read_functions();
+
+                func = functions.get(&"sum".to_string()).unwrap().clone();
+
+                push(&mut args, &mut true, ret.clone(), line_no);
+                args_switch = true;
+                comma = true;
+                operator = true;
+            }
+            Tokens::Minus => {
+                let functions = read_functions();
+
+                func = functions.get(&"difference".to_string()).unwrap().clone();
+
+                push(&mut args, &mut true, ret.clone(), line_no);
+                args_switch = true;
+                comma = true;
+                operator = true;
+            }
+            Tokens::Multiply => {
+                let functions = read_functions();
+
+                func = functions.get(&"product".to_string()).unwrap().clone();
+
+                push(&mut args, &mut true, ret.clone(), line_no);
+                args_switch = true;
+                comma = true;
+                operator = true;
+            }
+            Tokens::Divide => {
+                let functions = read_functions();
+
+                func = functions.get(&"quotient".to_string()).unwrap().clone();
+
+                push(&mut args, &mut true, ret.clone(), line_no);
+                args_switch = true;
+                comma = true;
+                operator = true;
             }
             t => {
                 error(format!("{t:?} is not yet implemented"), line_no);
