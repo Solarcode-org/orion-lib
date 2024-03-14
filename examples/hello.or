@@ -1,6 +1,7 @@
-# say("Hello, world!")
-# ask("How are you? ")
-
 say("Hello from Orion version", __env_version)
-let a = ask("What is your name? ")
-say("Hello", a)
+
+let name = ask("What is your name? ")
+say("Hello", name)
+
+let s = sum(1, 1)
+say(s)

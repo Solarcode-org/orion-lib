@@ -3,7 +3,7 @@
 use logos::Logos as _;
 
 use crate::{error::error, lexer::Tokens, orion::{FunctionType, VariableType}, run};
-use crate::orion::{read_functions, read_variables, write_variables};
+use crate::orion::{read_functions, read_variables, ReturnType, write_variables};
 
 /// Abstract Syntax Tree (AST) for Orion
 #[derive(Debug, Clone)]
@@ -26,7 +26,7 @@ pub enum ASTNode {
 
 /// The parser function.
 pub fn parse(line: String, line_no: usize) -> ASTNode {
-    if line.is_empty() || line.starts_with("#") {
+    if line.is_empty() || line.starts_with('#') {
         return ASTNode::String(String::new());
     }
 
@@ -58,7 +58,7 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
                     let line = line.strip_prefix("let ").unwrap();
                     let line = line.strip_prefix(&ident).unwrap();
                     let line = line.strip_prefix(' ').unwrap_or(line);
-                    let line = match line.strip_prefix("=") {
+                    let line = match line.strip_prefix('=') {
                         Some(line) => line,
                         None => {
                             error("Equals ('=') expected", line_no);
@@ -72,7 +72,10 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
 
                     match value {
                         Some(v) => {
-                            variables.insert(ident, VariableType::String(v));
+                            variables.insert(ident, match v {
+                                ReturnType::String(s) => VariableType::String(s),
+                                ReturnType::Number(n) => VariableType::Number(n),
+                            });
                         }
                         None => {
                             variables.insert(ident, VariableType::None);
@@ -120,8 +123,14 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
             Tokens::ParenOpen => args_switch = true,
             Tokens::ParenClose => {
                 args_switch = false;
+                let func = ASTNode::Func(func.clone(), Box::new(ASTNode::Args(args.clone())));
 
-                ret = ASTNode::Func(func.clone(), Box::new(ASTNode::Args(args.clone())));
+                if args_switch {
+                    push(&mut args, &mut comma, func, line_no);
+                } else {
+                    ret = func;
+                }
+
                 args.clear();
             },
             Tokens::Let => {
@@ -141,6 +150,13 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
                 }
             }
             Tokens::Equals => {},
+            Tokens::Number(n) => {
+                if args_switch {
+                    push(&mut args, &mut comma, ASTNode::Number(n), line_no);
+                } else {
+                    ret = ASTNode::Number(n);
+                }
+            }
             t => {
                 error(format!("{t:?} is not yet implemented"), line_no);
             }
