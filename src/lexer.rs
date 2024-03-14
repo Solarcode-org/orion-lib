@@ -49,11 +49,13 @@ pub enum Tokens {
     None,
 
     /// Number (integer and float).
-    #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", |lex| lex.slice().parse::<f64>().unwrap())]
+    #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?",
+        |lex| lex.slice().parse::<f64>().unwrap())]
     Number(f64),
 
     /// String.
-    #[regex(r#""([^"\\]|\\["\\bnfrt]|u[a-fA-F0-9]{4})*""#, |lex| lex.slice().replace('\"', "").to_owned())]
+    #[regex(r#""([^"\\]|\\["\\bnfrt]|u[a-fA-F0-9]{4})*""#,
+        |lex| lex.slice().replace('\"', "").to_owned())]
     String(String),
 
     /// Identifier a.k.a functions, variables, names, etc.

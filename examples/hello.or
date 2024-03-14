@@ -4,4 +4,4 @@ let name = ask("What is your name? ")
 say("Hello", name)
 
 let s = sum(1, 1)
-say(s)
+say("1 + 1 is", s)

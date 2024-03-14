@@ -22,7 +22,6 @@
 
 use error::try_error;
 use parser::parse;
-use crate::orion::ReturnType;
 
 use crate::parser::ASTNode;
 
@@ -56,7 +55,7 @@ pub fn run_contents(contents: String) {
     }
 }
 
-fn run(ast: ASTNode, line: usize) -> Option<ReturnType> {
+fn run(ast: ASTNode, line: usize) -> Option<ASTNode> {
     if let ASTNode::Func(f, args) = ast {
         match f {
             orion::FunctionType::Printic(f) => {
@@ -64,10 +63,14 @@ fn run(ast: ASTNode, line: usize) -> Option<ReturnType> {
                 None
             },
             orion::FunctionType::Inputic(f) => {
-                Some(ReturnType::String(try_error(f(*args), line)))
+                Some(ASTNode::String(try_error(f(*args), line)))
             }
             orion::FunctionType::Arithmetic(f) => {
-                Some(ReturnType::Number(try_error(f(*args), line)))
+                Some(ASTNode::Number(try_error(f(*args), line)))
+            }
+            orion::FunctionType::Voidic(f) => {
+                try_error(f(*args), line);
+                None
             }
         }
     } else {

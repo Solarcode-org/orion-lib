@@ -4,28 +4,23 @@ use std::{collections::HashMap, io::stdout};
 use std::io::{stdin, Write};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::parser::ASTNode;
+use crate::parser::{ASTNode, parse};
+use crate::run;
 
 /// Function type.
 #[derive(Debug, Clone)]
 pub enum FunctionType {
-    /// Functions that take in input but have no output.
+    /// Functions that take in input but have no output and don't return any errors.
     Printic(fn(ASTNode) -> ()),
 
     /// Functions that take in input and have output.
     Inputic(fn(ASTNode) -> Result<String, String>),
 
     /// Arithmetic functions
-    Arithmetic(fn(ASTNode) -> Result<f64, String>)
-}
+    Arithmetic(fn(ASTNode) -> Result<f64, String>),
 
-/// The function return type.
-pub enum ReturnType {
-    /// String.
-    String(String),
-
-    /// Number.
-    Number(f64),
+    /// Functions that take in input and have no output but may return an error.
+    Voidic(fn(ASTNode) -> Result<(), String>),
 }
 
 /// Variable type.
@@ -47,6 +42,7 @@ lazy_static! {
         let mut m = HashMap::new();
         m.insert("say".to_string(), FunctionType::Printic(say));
         m.insert("ask".to_string(), FunctionType::Inputic(ask));
+        m.insert("let".to_string(), FunctionType::Voidic(create_var));
         m.insert("sum".to_string(), FunctionType::Arithmetic(sum));
         m.insert("difference".to_string(), FunctionType::Arithmetic(difference));
         m.insert("product".to_string(), FunctionType::Arithmetic(product));
@@ -56,7 +52,8 @@ lazy_static! {
     /// Functions for Orion.
     pub static ref VARIABLES: RwLock<HashMap<String, VariableType>> = {
         let mut m = HashMap::new();
-        m.insert("__env_version".to_string(), VariableType::String(env!("CARGO_PKG_VERSION").to_string()));
+        m.insert("__env_version".to_string(), VariableType::String(env!("CARGO_PKG_VERSION")
+            .to_string()));
         RwLock::new(m)
     };
 }
@@ -89,20 +86,45 @@ fn to_num(token: &ASTNode) -> Result<f64, String> {
 
 fn get_args(tokens: ASTNode) -> Vec<ASTNode> {
     match tokens {
-        ASTNode::Args(args) => args.to_vec(),
+        ASTNode::Args(args_) => {
+            let mut args = vec![];
+
+            for arg in args_ {
+                args.push(match arg {
+                    ASTNode::Expr(line, line_no) => {
+                        let value = run(parse(line, line_no), line_no);
+
+                        match value {
+                            Some(v) => {
+                                v
+                            }
+                            None => {
+                                ASTNode::None
+                            }
+                        }
+                    }
+                    arg => arg,
+                })
+            }
+
+            args
+        },
         arg => vec![arg],
     }
 }
 
-fn expect_args<T: AsRef<str>>(tokens: ASTNode, args_no: usize, func: T) -> Result<Vec<ASTNode>, String> {
+fn expect_args<T: AsRef<str>>(tokens: ASTNode, args_no: usize, func: T)
+    -> Result<Vec<ASTNode>, String> {
     let args = get_args(tokens);
 
     if args.len() < args_no {
-        return Err(format!("{}: Not enough arguments ({}, expected: {})", func.as_ref(), args.len(), args_no));
+        return Err(format!("{}: Not enough arguments ({}, expected: {})", func.as_ref(), args.len(),
+                           args_no));
     }
 
     if args.len() > args_no {
-        return Err(format!("{}: Too many arguments ({}, expected: {})", func.as_ref(), args.len(), args_no));
+        return Err(format!("{}: Too many arguments ({}, expected: {})", func.as_ref(), args.len(),
+                           args_no));
     }
 
     Ok(args)
@@ -144,6 +166,24 @@ fn ask(tokens: ASTNode) -> Result<String, String> {
     }
 
     Ok(inp.trim().to_string())
+}
+
+fn create_var(tokens: ASTNode) -> Result<(), String> {
+    let args = expect_args(tokens, 2, "let")?;
+
+    let var_name = to_string(&args[0]);
+    let var_value = &args[1];
+
+    let mut variables = write_variables();
+
+    variables.insert(var_name, match var_value {
+        ASTNode::String(s) => VariableType::String(s.to_owned()),
+        ASTNode::Number(n) => VariableType::Number(*n),
+        ASTNode::None => VariableType::None,
+        _ => return Err("Cannot create variable with this type".to_string()),
+    });
+
+    Ok(())
 }
 
 fn sum(tokens: ASTNode) -> Result<f64, String> {

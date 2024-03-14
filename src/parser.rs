@@ -2,8 +2,8 @@
 
 use logos::Logos as _;
 
-use crate::{error::error, lexer::Tokens, orion::{FunctionType, VariableType}, run};
-use crate::orion::{read_functions, read_variables, ReturnType, write_variables};
+use crate::{error::error, lexer::Tokens, orion::{FunctionType, VariableType}};
+use crate::orion::{read_functions, read_variables};
 
 /// Abstract Syntax Tree (AST) for Orion
 #[derive(Debug, Clone)]
@@ -21,7 +21,13 @@ pub enum ASTNode {
     Number(f64),
 
     /// The none node.
-    None
+    None,
+
+    /// The expression node.
+    ///
+    #[doc = "**NOTE**: This node stores a string that has to run to get the value of the expression
+    and also the line number."]
+    Expr(String, usize)
 }
 
 /// The parser function.
@@ -65,24 +71,16 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
                         }
                     };
                     let line = line.strip_prefix(' ').unwrap_or(line);
+                    let functions = read_functions();
 
-                    let value = run(parse(line.to_string(), line_no), line_no);
-
-                    let mut variables = write_variables();
-
-                    match value {
-                        Some(v) => {
-                            variables.insert(ident, match v {
-                                ReturnType::String(s) => VariableType::String(s),
-                                ReturnType::Number(n) => VariableType::Number(n),
-                            });
-                        }
-                        None => {
-                            variables.insert(ident, VariableType::None);
-                        }
-                    }
-
-                    return ASTNode::String(String::new());
+                    return ASTNode::Func(functions.get(&"let".to_string()).unwrap().clone(),
+                                        Box::new(ASTNode::Args(
+                                                vec![ASTNode::String(ident), ASTNode::Expr(
+                                                    line.to_string(), line_no
+                                                )]
+                                            )
+                                        )
+                                    );
                 }
 
                 let functions = read_functions();
