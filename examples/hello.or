@@ -1,7 +1,14 @@
+# Print the Orion version.
 say("Hello from Orion version", __env_version)
 
+# Ask the user their name.
 let name = ask("What is your name? ")
+
+# Print the user's name.
 say("Hello", name)
 
-let sum_ = 12
-say("12 * 5 is", sum_)
+# Find the product of 12 and 5 (60).
+let prod = 12 * 5
+
+# Print the product.
+say("Did you know 12 * 5 is", prod)

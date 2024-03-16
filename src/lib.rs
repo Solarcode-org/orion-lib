@@ -74,7 +74,7 @@ fn run(ast: ASTNode, line: usize) -> Option<ASTNode> {
             }
         }
     } else {
-        None
+        Some(ast)
     }
 }
 
