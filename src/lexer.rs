@@ -5,7 +5,7 @@ use logos::Logos;
 /// The tokens for Orion.
 #[derive(Debug, Logos, PartialEq)]
 #[logos(skip r"[ \t\r\n\f]+")]
-#[logos(skip r";\s*.*")]
+#[logos(skip r"#\s*.*")]
 pub enum Tokens {
     /// Boolean.
     #[token("false", |_| false)]

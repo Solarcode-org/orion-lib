@@ -32,19 +32,19 @@ pub enum ASTNode {
 
 /// The parser function.
 pub fn parse(line: String, line_no: usize) -> ASTNode {
-    if line.is_empty() || line.starts_with('#') {
-        return ASTNode::String(String::new());
+    if line.is_empty() {
+        return ASTNode::None;
     }
 
     let tokens_lex = Tokens::lexer(&line);
-    let mut args_switch = false;
 
     fn default(_args: ASTNode) {}
 
     let mut func = FunctionType::Printic(default);
+    let mut args_switch = false;
     let mut args = vec![];
     let mut comma = true;
-    let mut ret = ASTNode::String(String::new());
+    let mut ret = ASTNode::None;
     let mut var_on = false;
     let mut operator = false;
 
