@@ -11,4 +11,11 @@ say("Hello", name)
 let prod = 12 * 5
 
 # Print the product.
-say("Did you know 12 * 5 is", prod)
+say("Did you know 12 * 5 is", prod, "?") # See next example for formatted strings so you can remove the space before the
+                                         # the question mark.
+
+# Formatted string.
+let fmt = str_join(name, "!")
+
+# Call the user.
+say(fmt, "Come here.")

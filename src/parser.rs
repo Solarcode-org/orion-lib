@@ -89,6 +89,7 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
 
                 if functions.contains_key(&ident) {
                     func = functions.get(&ident).unwrap().clone();
+                    continue;
                 }
 
                 if variables.contains_key(&ident) {
@@ -117,7 +118,11 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
                             }
                         }
                     }
+
+                    continue;
                 }
+
+                error(format!("Identifier `{ident}` not found"), line_no);
             }
             Tokens::ParenOpen => args_switch = true,
             Tokens::ParenClose => {
