@@ -20,8 +20,10 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::invalid_rust_codeblocks)]
 
+use std::collections::HashMap;
 use error::try_error;
 use parser::parse;
+use crate::orion::{FunctionType, setup_functions, setup_variables, VariableType};
 
 use crate::parser::ASTNode;
 
@@ -45,31 +47,37 @@ pub mod parser;
 /// run_contents("say(\"Hello, world!\")".to_string());
 /// ```
 pub fn run_contents(contents: String) {
+    let functions = setup_functions();
+    let mut variables = setup_variables();
+
     for (count, line) in contents.lines().enumerate() {
-        let ast = parse(line.to_string(), count + 1);
+        let ast = parse(&functions, &variables, line.to_string(), count + 1);
 
         run(
             ast,
             count + 1,
+            &functions,
+            &mut variables
         );
     }
 }
 
-fn run(ast: ASTNode, line: usize) -> Option<ASTNode> {
+fn run(ast: ASTNode, line: usize, functions: &HashMap<String, FunctionType>,
+       variables: &mut HashMap<String, VariableType>) -> Option<ASTNode> {
     if let ASTNode::Func(f, args) = ast {
         match f {
-            orion::FunctionType::Printic(f) => {
+            FunctionType::Printic(f) => {
                 f(*args);
                 None
             },
-            orion::FunctionType::Inputic(f) => {
+            FunctionType::Inputic(f) => {
                 Some(ASTNode::String(try_error(f(*args), line)))
             }
-            orion::FunctionType::Arithmetic(f) => {
+            FunctionType::Arithmetic(f) => {
                 Some(ASTNode::Number(try_error(f(*args), line)))
             }
-            orion::FunctionType::Voidic(f) => {
-                try_error(f(*args), line);
+            FunctionType::Voidic(f) => {
+                try_error(f(*args, functions.clone(), &mut variables), line);
                 None
             }
         }

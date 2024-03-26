@@ -2,7 +2,6 @@
 
 use std::{collections::HashMap, io::stdout};
 use std::io::{stdin, Write};
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::process::exit;
 
 use crate::parser::{ASTNode, parse};
@@ -21,7 +20,8 @@ pub enum FunctionType {
     Arithmetic(fn(ASTNode) -> Result<f64, String>),
 
     /// Functions that take in input and have no output but may return an error.
-    Voidic(fn(ASTNode) -> Result<(), String>),
+    Voidic(fn(ASTNode, HashMap<String, FunctionType>, &mut HashMap<String, VariableType>)
+               -> Result<(), String>),
 }
 
 /// Variable type.
@@ -37,39 +37,30 @@ pub enum VariableType {
     None
 }
 
-lazy_static! {
-    /// Functions for Orion.
-    pub static ref FUNCTIONS: RwLock<HashMap<String, FunctionType>> = {
-        let mut m = HashMap::new();
-        m.insert("say".to_string(), FunctionType::Printic(say));
-        m.insert("ask".to_string(), FunctionType::Inputic(ask));
-        m.insert("let".to_string(), FunctionType::Voidic(create_var));
-        m.insert("sum".to_string(), FunctionType::Arithmetic(sum));
-        m.insert("difference".to_string(), FunctionType::Arithmetic(difference));
-        m.insert("product".to_string(), FunctionType::Arithmetic(product));
-        m.insert("quotient".to_string(), FunctionType::Arithmetic(quotient));
-        m.insert("quit".to_string(), FunctionType::Voidic(quit));
-        m.insert("error".to_string(), FunctionType::Voidic(error));
-        m.insert("str_join".to_string(), FunctionType::Inputic(str_join));
-        RwLock::new(m)
-    };
-    /// Functions for Orion.
-    pub static ref VARIABLES: RwLock<HashMap<String, VariableType>> = {
-        let mut m = HashMap::new();
-        m.insert("__env_version".to_string(), VariableType::String(env!("CARGO_PKG_VERSION")
-            .to_string()));
-        RwLock::new(m)
-    };
+pub(crate) fn setup_functions() -> HashMap<String, FunctionType> {
+    let mut functions = HashMap::new();
+
+    functions.insert("say".to_string(), FunctionType::Printic(say));
+    functions.insert("ask".to_string(), FunctionType::Inputic(ask));
+    functions.insert("let".to_string(), FunctionType::Voidic(create_var));
+    functions.insert("sum".to_string(), FunctionType::Arithmetic(sum));
+    functions.insert("difference".to_string(), FunctionType::Arithmetic(difference));
+    functions.insert("product".to_string(), FunctionType::Arithmetic(product));
+    functions.insert("quotient".to_string(), FunctionType::Arithmetic(quotient));
+    functions.insert("quit".to_string(), FunctionType::Voidic(quit));
+    functions.insert("error".to_string(), FunctionType::Voidic(error));
+    functions.insert("str_join".to_string(), FunctionType::Inputic(str_join));
+
+    functions
 }
 
-pub(crate) fn read_functions() -> RwLockReadGuard<'static, HashMap<String, FunctionType>> {
-    return FUNCTIONS.read().unwrap();
-}
-pub(crate) fn read_variables() -> RwLockReadGuard<'static, HashMap<String, VariableType>> {
-    return VARIABLES.read().unwrap();
-}
-pub(crate) fn write_variables() -> RwLockWriteGuard<'static, HashMap<String, VariableType>> {
-    return VARIABLES.write().unwrap();
+pub(crate) fn setup_variables() -> HashMap<String, VariableType> {
+    let mut variables = HashMap::new();
+
+    variables.insert("__env_version".to_string(), VariableType::String(env!("CARGO_PKG_VERSION")
+            .to_string()));
+
+    variables
 }
 
 fn to_string(token: &ASTNode) -> String {
@@ -88,7 +79,10 @@ fn to_num(token: &ASTNode) -> Result<f64, String> {
     }
 }
 
-fn get_args(tokens: ASTNode) -> Vec<ASTNode> {
+fn get_args(tokens: ASTNode, functions: Option<HashMap<String, FunctionType>>,
+            variables: &mut Option<HashMap<String, VariableType>>) -> Vec<ASTNode> {
+    let functions = functions.unwrap_or_default();
+
     match tokens {
         ASTNode::Args(args_) => {
             let mut args = vec![];
@@ -96,7 +90,8 @@ fn get_args(tokens: ASTNode) -> Vec<ASTNode> {
             for arg in args_ {
                 args.push(match arg {
                     ASTNode::Expr(line, line_no) => {
-                        let value = run(parse(line, line_no), line_no);
+                        let value = run(parse(&functions, line, line_no), line_no,
+                                        &functions, &mut variables);
 
                         match value {
                             Some(v) => {
@@ -117,9 +112,11 @@ fn get_args(tokens: ASTNode) -> Vec<ASTNode> {
     }
 }
 
-fn expect_args<T: AsRef<str>>(tokens: ASTNode, args_no: usize, func: T)
+fn expect_args<T: AsRef<str>>(tokens: ASTNode, args_no: usize, func: T,
+                              functions: Option<HashMap<String, FunctionType>>,
+                              variables: &mut Option<HashMap<String, FunctionType>>)
     -> Result<Vec<ASTNode>, String> {
-    let args = get_args(tokens);
+    let args = get_args(tokens, functions, &mut variables);
 
     if args.len() < args_no {
         return Err(format!("{}: Not enough arguments ({}, expected: {})", func.as_ref(), args.len(),
@@ -135,7 +132,7 @@ fn expect_args<T: AsRef<str>>(tokens: ASTNode, args_no: usize, func: T)
 }
 
 fn say(tokens: ASTNode) {
-    let args = get_args(tokens);
+    let args = get_args(tokens, None, None);
 
     for arg in args {
         print!("{}", to_string(&arg));
@@ -147,7 +144,7 @@ fn say(tokens: ASTNode) {
 }
 
 fn ask(tokens: ASTNode) -> Result<String, String> {
-    let args = expect_args(tokens, 1, "ask")?;
+    let args = expect_args(tokens, 1, "ask", None)?;
 
     let prompt = to_string(&args[0]);
 
@@ -172,13 +169,12 @@ fn ask(tokens: ASTNode) -> Result<String, String> {
     Ok(inp.trim().to_string())
 }
 
-fn create_var(tokens: ASTNode) -> Result<(), String> {
-    let args = expect_args(tokens, 2, "let")?;
+fn create_var(tokens: ASTNode, functions: HashMap<String, FunctionType>,
+              variables: &mut HashMap<String, VariableType>) -> Result<(), String> {
+    let args = expect_args(tokens, 2, "let", Some(functions))?;
 
     let var_name = to_string(&args[0]);
     let var_value = &args[1];
-
-    let mut variables = write_variables();
 
     variables.insert(var_name, match var_value {
         ASTNode::String(s) => VariableType::String(s.to_owned()),
@@ -191,7 +187,7 @@ fn create_var(tokens: ASTNode) -> Result<(), String> {
 }
 
 fn sum(tokens: ASTNode) -> Result<f64, String> {
-    let args = expect_args(tokens, 2, "sum")?;
+    let args = expect_args(tokens, 2, "sum", None)?;
 
     let num1 = to_num(&args[0])?;
     let num2 = to_num(&args[1])?;
@@ -200,7 +196,7 @@ fn sum(tokens: ASTNode) -> Result<f64, String> {
 }
 
 fn difference(tokens: ASTNode) -> Result<f64, String> {
-    let args = expect_args(tokens, 2, "difference")?;
+    let args = expect_args(tokens, 2, "difference", None)?;
 
     let num1 = to_num(&args[0])?;
     let num2 = to_num(&args[1])?;
@@ -209,7 +205,7 @@ fn difference(tokens: ASTNode) -> Result<f64, String> {
 }
 
 fn product(tokens: ASTNode) -> Result<f64, String> {
-    let args = expect_args(tokens, 2, "product")?;
+    let args = expect_args(tokens, 2, "product", None)?;
 
     let num1 = to_num(&args[0])?;
     let num2 = to_num(&args[1])?;
@@ -218,7 +214,7 @@ fn product(tokens: ASTNode) -> Result<f64, String> {
 }
 
 fn quotient(tokens: ASTNode) -> Result<f64, String> {
-    let args = expect_args(tokens, 2, "quotient")?;
+    let args = expect_args(tokens, 2, "quotient", None)?;
 
     let num1 = to_num(&args[0])?;
     let num2 = to_num(&args[1])?;
@@ -226,14 +222,15 @@ fn quotient(tokens: ASTNode) -> Result<f64, String> {
     Ok(num1 / num2)
 }
 
-fn quit(tokens: ASTNode) -> Result<(), String> {
-    let args = get_args(tokens);
+fn quit(tokens: ASTNode, _functions: HashMap<String, FunctionType>,
+        _variables: HashMap<String, VariableType>) -> Result<(), String> {
+    let args = get_args(tokens, None);
 
     if args.len() > 1 {
         return Err(format!("exit: Too many arguments {{{}, expected: max(1)}}", args.len()));
     }
 
-    let code = to_num(args.get(0).unwrap_or(&ASTNode::Number(0_f64)))?;
+    let code = to_num(args.first().unwrap_or(&ASTNode::Number(0_f64)))?;
 
     let code = if code.fract() > 0_f64 {
         return Err("exit: Expected an integer as exit code".to_string());
@@ -243,10 +240,11 @@ fn quit(tokens: ASTNode) -> Result<(), String> {
 
     exit(code);
 }
-fn error(tokens: ASTNode) -> Result<(), String> {
-    let args = get_args(tokens);
+fn error(tokens: ASTNode, _functions: HashMap<String, FunctionType>,
+         _variables: HashMap<String, VariableType>) -> Result<(), String> {
+    let args = get_args(tokens, None);
 
-    if args.len() < 1 {
+    if args.is_empty() {
         return Err(format!("exit: Not enough arguments {{{}, expected: min(1) max(2)}}",
                            args.len()));
     }
@@ -269,7 +267,7 @@ fn error(tokens: ASTNode) -> Result<(), String> {
 }
 
 fn str_join(tokens: ASTNode) -> Result<String, String> {
-    let args = get_args(tokens);
+    let args = get_args(tokens, None);
 
     if args.is_empty() {
         return Err("Empty joining list".to_string());
@@ -278,7 +276,7 @@ fn str_join(tokens: ASTNode) -> Result<String, String> {
     let mut joined = String::new();
 
     for arg in args {
-        joined.extend(to_string(&arg).chars())
+        joined.push_str(&to_string(&arg))
     }
 
     Ok(joined)

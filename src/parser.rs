@@ -1,9 +1,9 @@
 //! The parser for Orion.
 
+use std::collections::HashMap;
 use logos::Logos as _;
 
 use crate::{error::error, lexer::Tokens, orion::{FunctionType, VariableType}};
-use crate::orion::{read_functions, read_variables};
 
 /// Abstract Syntax Tree (AST) for Orion
 #[derive(Debug, Clone)]
@@ -31,7 +31,8 @@ pub enum ASTNode {
 }
 
 /// The parser function.
-pub fn parse(line: String, line_no: usize) -> ASTNode {
+pub fn parse(functions: &HashMap<String, FunctionType>, variables: &HashMap<String, VariableType>,
+             line: String, line_no: usize) -> ASTNode {
     if line.is_empty() {
         return ASTNode::None;
     }
@@ -72,7 +73,6 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
                         }
                     };
                     let line = line.strip_prefix(' ').unwrap_or(line);
-                    let functions = read_functions();
 
                     return ASTNode::Func(functions.get(&"let".to_string()).unwrap().clone(),
                                         Box::new(ASTNode::Args(
@@ -83,9 +83,6 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
                                         )
                                     );
                 }
-
-                let functions = read_functions();
-                let variables = read_variables();
 
                 if functions.contains_key(&ident) {
                     func = functions.get(&ident).unwrap().clone();
@@ -176,8 +173,6 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
                 }
             }
             Tokens::Plus => {
-                let functions = read_functions();
-
                 func = functions.get(&"sum".to_string()).unwrap().clone();
 
                 push(&mut args, &mut true, ret.clone(), line_no);
@@ -186,8 +181,6 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
                 operator = true;
             }
             Tokens::Minus => {
-                let functions = read_functions();
-
                 func = functions.get(&"difference".to_string()).unwrap().clone();
 
                 push(&mut args, &mut true, ret.clone(), line_no);
@@ -196,8 +189,6 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
                 operator = true;
             }
             Tokens::Multiply => {
-                let functions = read_functions();
-
                 func = functions.get(&"product".to_string()).unwrap().clone();
 
                 push(&mut args, &mut true, ret.clone(), line_no);
@@ -206,8 +197,6 @@ pub fn parse(line: String, line_no: usize) -> ASTNode {
                 operator = true;
             }
             Tokens::Divide => {
-                let functions = read_functions();
-
                 func = functions.get(&"quotient".to_string()).unwrap().clone();
 
                 push(&mut args, &mut true, ret.clone(), line_no);
@@ -235,11 +224,14 @@ fn push(args: &mut Vec<ASTNode>, comma: &mut bool, arg: ASTNode, line: usize) {
 
 #[cfg(test)]
 mod tests {
+    use crate::orion::{setup_functions, setup_variables};
     use super::*;
 
     #[test]
     fn test_ast_func() {
-        let ast = parse("say(\"Hello\")".to_string(), 0);
+        let functions = setup_functions();
+        let variables = setup_variables();
+        let ast = parse(&functions, &variables, "say(\"Hello\")".to_string(), 0);
 
         match ast {
             ASTNode::Func(_f, _args) => {},
@@ -248,7 +240,9 @@ mod tests {
     }
     #[test]
     fn test_ast_string() {
-        let ast = parse("\"Hello\"".to_string(), 0);
+        let functions = setup_functions();
+        let variables = setup_variables();
+        let ast = parse(&functions, &variables, "\"Hello\"".to_string(), 0);
 
         println!("{:?}", ast);
 
