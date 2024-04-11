@@ -1,9 +1,13 @@
 //! The parser for Orion.
 
-use std::collections::HashMap;
 use logos::Logos as _;
+use std::collections::HashMap;
 
-use crate::{error::error, lexer::Tokens, orion::{FunctionType, VariableType}};
+use crate::{
+    error::error,
+    lexer::Tokens,
+    orion::{FunctionType, VariableType},
+};
 
 /// Abstract Syntax Tree (AST) for Orion
 #[derive(Debug, Clone)]
@@ -27,19 +31,28 @@ pub enum ASTNode {
     ///
     #[doc = "**NOTE**: This node stores a string that has to run to get the value of the expression
     and also the line number."]
-    Expr(String, usize)
+    Expr(String, usize),
 }
 
 /// The parser function.
-pub fn parse(functions: &HashMap<String, FunctionType>, variables: &HashMap<String, VariableType>,
-             line: String, line_no: usize) -> ASTNode {
+pub fn parse(
+    functions: &HashMap<String, FunctionType>,
+    variables: &HashMap<String, VariableType>,
+    line: String,
+    line_no: usize,
+) -> ASTNode {
     if line.is_empty() {
         return ASTNode::None;
     }
 
     let tokens_lex = Tokens::lexer(&line);
 
-    fn default(_args: ASTNode) {}
+    fn default(
+        _args: ASTNode,
+        _functions: HashMap<String, FunctionType>,
+        _variables: &mut HashMap<String, VariableType>,
+    ) {
+    }
 
     let mut func = FunctionType::Printic(default);
     let mut args_switch = false;
@@ -53,10 +66,7 @@ pub fn parse(functions: &HashMap<String, FunctionType>, variables: &HashMap<Stri
         let token = match token {
             Ok(t) => t,
             Err(_) => {
-                error(
-                    "Unexpected token",
-                    line_no,
-                );
+                error("Unexpected token", line_no);
             }
         };
 
@@ -74,14 +84,13 @@ pub fn parse(functions: &HashMap<String, FunctionType>, variables: &HashMap<Stri
                     };
                     let line = line.strip_prefix(' ').unwrap_or(line);
 
-                    return ASTNode::Func(functions.get(&"let".to_string()).unwrap().clone(),
-                                        Box::new(ASTNode::Args(
-                                                vec![ASTNode::String(ident), ASTNode::Expr(
-                                                    line.to_string(), line_no
-                                                )]
-                                            )
-                                        )
-                                    );
+                    return ASTNode::Func(
+                        functions.get(&"let".to_string()).unwrap().clone(),
+                        Box::new(ASTNode::Args(vec![
+                            ASTNode::String(ident),
+                            ASTNode::Expr(line.to_string(), line_no),
+                        ])),
+                    );
                 }
 
                 if functions.contains_key(&ident) {
@@ -133,7 +142,7 @@ pub fn parse(functions: &HashMap<String, FunctionType>, variables: &HashMap<Stri
                 }
 
                 args.clear();
-            },
+            }
             Tokens::Let => {
                 var_on = true;
             }
@@ -150,18 +159,17 @@ pub fn parse(functions: &HashMap<String, FunctionType>, variables: &HashMap<Stri
                     ret = ASTNode::String(s);
                 }
             }
-            Tokens::Equals => {},
+            Tokens::Equals => {}
             Tokens::Number(n) => {
                 if args_switch {
                     push(&mut args, &mut comma, ASTNode::Number(n), line_no);
                 } else {
                     ret = ASTNode::Number(n);
                 }
-                
+
                 if operator {
                     args_switch = false;
-                    let func = ASTNode::Func(func.clone(),
-                                             Box::new(ASTNode::Args(args.clone())));
+                    let func = ASTNode::Func(func.clone(), Box::new(ASTNode::Args(args.clone())));
 
                     if args_switch {
                         push(&mut args, &mut comma, func, line_no);
@@ -224,8 +232,8 @@ fn push(args: &mut Vec<ASTNode>, comma: &mut bool, arg: ASTNode, line: usize) {
 
 #[cfg(test)]
 mod tests {
-    use crate::orion::{setup_functions, setup_variables};
     use super::*;
+    use crate::orion::{setup_functions, setup_variables};
 
     #[test]
     fn test_ast_func() {
@@ -234,7 +242,7 @@ mod tests {
         let ast = parse(&functions, &variables, "say(\"Hello\")".to_string(), 0);
 
         match ast {
-            ASTNode::Func(_f, _args) => {},
+            ASTNode::Func(_f, _args) => {}
             _ => panic!("Must be `func`."),
         }
     }

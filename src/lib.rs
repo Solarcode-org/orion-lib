@@ -20,15 +20,12 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::invalid_rust_codeblocks)]
 
-use std::collections::HashMap;
+use crate::orion::{setup_functions, setup_variables, FunctionType, VariableType};
 use error::try_error;
 use parser::parse;
-use crate::orion::{FunctionType, setup_functions, setup_variables, VariableType};
+use std::collections::HashMap;
 
 use crate::parser::ASTNode;
-
-#[macro_use]
-extern crate lazy_static;
 
 mod error;
 pub mod lexer;
@@ -53,31 +50,32 @@ pub fn run_contents(contents: String) {
     for (count, line) in contents.lines().enumerate() {
         let ast = parse(&functions, &variables, line.to_string(), count + 1);
 
-        run(
-            ast,
-            count + 1,
-            &functions,
-            &mut variables
-        );
+        run(ast, count + 1, &functions, &mut variables);
     }
 }
 
-fn run(ast: ASTNode, line: usize, functions: &HashMap<String, FunctionType>,
-       variables: &mut HashMap<String, VariableType>) -> Option<ASTNode> {
+fn run(
+    ast: ASTNode,
+    line: usize,
+    functions: &HashMap<String, FunctionType>,
+    variables: &mut HashMap<String, VariableType>,
+) -> Option<ASTNode> {
     if let ASTNode::Func(f, args) = ast {
         match f {
             FunctionType::Printic(f) => {
-                f(*args);
+                f(*args, functions.to_owned(), variables);
                 None
-            },
-            FunctionType::Inputic(f) => {
-                Some(ASTNode::String(try_error(f(*args), line)))
             }
-            FunctionType::Arithmetic(f) => {
-                Some(ASTNode::Number(try_error(f(*args), line)))
-            }
+            FunctionType::Inputic(f) => Some(ASTNode::String(try_error(
+                f(*args, functions.to_owned(), variables),
+                line,
+            ))),
+            FunctionType::Arithmetic(f) => Some(ASTNode::Number(try_error(
+                f(*args, functions.to_owned(), variables),
+                line,
+            ))),
             FunctionType::Voidic(f) => {
-                try_error(f(*args, functions.clone(), &mut variables), line);
+                try_error(f(*args, functions.clone(), variables), line);
                 None
             }
         }
@@ -95,4 +93,3 @@ mod tests {
         run_contents("say(\"Hello!\")".to_string());
     }
 }
-
