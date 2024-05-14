@@ -1,0 +1,7 @@
+say("Hello", "world")
+let stat = ask("How are you? ")
+
+# say the status of the user.
+say("So you are" stat)
+
+say(12)
