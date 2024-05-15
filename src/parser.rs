@@ -4,7 +4,7 @@ use rustlr::{Bumper, ZCParser};
 
 use crate::{
     error::OrionErrors::LineError,
-    lrparser::{orionlexer, parse_with, RetTypeEnum},
+    lrparser::{orionlexer, parse_train_with, parse_with, RetTypeEnum},
     orion_ast::E,
 };
 
@@ -14,12 +14,11 @@ pub fn parse<'a>(
     parser: &mut ZCParser<RetTypeEnum<'a>, Bumper<'a, ()>>,
     tokenizer: &mut orionlexer<'a>,
 ) -> Result<E<'a>> {
-    println!("line: {}", parser.linenum);
-
-    let result = parse_with(parser, tokenizer).map_err(|_| LineError {
-        line: count,
-        msg: "Parsing Error".to_string(),
-    });
+    let result =
+        parse_with(parser, tokenizer /* "grammar/orion.grammar" */).map_err(|_| LineError {
+            line: count,
+            msg: "Parsing Error".to_string(),
+        });
 
     let err = parser.get_err_report().to_string();
 
@@ -28,6 +27,14 @@ pub fn parse<'a>(
         .with_section(move || err.header("Parser Error".bright_red()))?;
 
     Ok(result)
+}
+
+pub(crate) fn _parse_train<'a, P: AsRef<str>>(
+    parser: &mut ZCParser<RetTypeEnum<'a>, Bumper<'a, ()>>,
+    tokenizer: &mut orionlexer<'a>,
+    parserpath: P,
+) {
+    parse_train_with(parser, tokenizer, parserpath.as_ref()).unwrap_or_else(|x| x);
 }
 
 // #[cfg(test)]

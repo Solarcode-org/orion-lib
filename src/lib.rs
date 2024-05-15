@@ -200,11 +200,32 @@ fn get_float(ast: &E, line: usize, functions: &Functions, variables: &Variables)
 
 #[cfg(test)]
 mod tests {
+    use self::parser::_parse_train as parse_train;
+
     use super::*;
 
     #[test]
     fn test_run_contents() -> Result<()> {
         run_contents("say(\"Hello!\")".to_string())?;
         Ok(())
+    }
+
+    #[test]
+    fn test_trainer() {
+        let bump = Bump::new();
+
+        let mut parser = make_parser();
+        parser.exstate.set(&bump);
+
+        let mut tokenizer = orionlexer::from_str(
+            r#"say("Hello", "world!")
+say "gnu"
+        "#
+            .trim(),
+        );
+
+        let parserpath = "src/parser.rs";
+
+        parse_train(&mut parser, &mut tokenizer, parserpath);
     }
 }

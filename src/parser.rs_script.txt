@@ -1,0 +1,3 @@
+# Rustlr training script for src/parser.rs
+
+2	1	ANY_ERROR ::: unexpected identifier
