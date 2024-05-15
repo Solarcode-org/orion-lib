@@ -3,9 +3,13 @@
 use std::{
     collections::HashMap,
     io::{stdin, stdout, Write as _},
+    process::exit,
 };
 
-use anyhow::{bail, Result};
+use color_eyre::{
+    eyre::{bail, Context, ContextCompat},
+    Result, Section,
+};
 use rustlr::LC;
 
 use crate::{orion_ast::E, run};
@@ -25,11 +29,11 @@ pub type Functional<T> = fn(Args, Functions, Variables) -> Result<T>;
 /// Function type.
 #[derive(Debug, Clone, Copy)]
 pub enum FunctionType {
-    /// Functions that take in input but have no output and don't return any errors.
-    Voidic(Functional<()>),
+    /// Return Nothing.
+    Void(Functional<()>),
 
-    /// Functions that take in input and have output.
-    Inputic(Functional<String>),
+    /// Return String.
+    String(Functional<String>),
 }
 
 /// Variable type.
@@ -51,16 +55,9 @@ pub enum VariableType {
 pub(crate) fn setup_functions<'a>() -> Functions<'a> {
     let mut functions = HashMap::new();
 
-    functions.insert("say".to_string(), FunctionType::Voidic(say));
-    functions.insert("ask".to_string(), FunctionType::Inputic(ask));
-    // functions.insert("let", FunctionType::Voidic(create_var));
-    // functions.insert("sum", FunctionType::Arithmetic(sum));
-    // functions.insert("difference", FunctionType::Arithmetic(difference));
-    // functions.insert("product", FunctionType::Arithmetic(product));
-    // functions.insert("quotient", FunctionType::Arithmetic(quotient));
-    // functions.insert("quit", FunctionType::Voidic(quit));
-    // functions.insert("error", FunctionType::Voidic(error));
-    // functions.insert("str_join", FunctionType::Inputic(str_join));
+    functions.insert("say".to_string(), FunctionType::Void(say));
+    functions.insert("ask".to_string(), FunctionType::String(ask));
+    functions.insert("quit".to_string(), FunctionType::Void(quit));
 
     functions
 }
@@ -188,12 +185,13 @@ fn ask<'a>(
     let mut args_ = vec![];
     expect_args(args, 1, "ask", functions, variables, &mut args_)?;
 
-    let prompt = match &args_[0] {
-        Some(prompt) => match prompt {
-            E::String(s) => s,
-            _ => bail!("ask: Prompt must be a string"),
-        },
-        None => todo!(),
+    let binding = &args_[0]
+        .clone()
+        .with_context(|| "ask: Prompt must be a string")?;
+
+    let prompt = match binding {
+        E::String(s) => s,
+        _ => bail!("ask: Prompt must be a string"),
     };
 
     print!("{prompt}");
@@ -207,63 +205,25 @@ fn ask<'a>(
     Ok(inp.trim().to_string())
 }
 
-// fn quit(
-//     tokens: ASTNode,
-//     functions: HashMap<String, FunctionType>,
-//     variables: &mut HashMap<String, VariableType>,
-// ) -> Result<(), String> {
-//     let args = get_args(tokens, functions, variables);
+fn quit<'a>(args: &'a [&'a LC<E<'a>>], functions: Functions, variables: Variables) -> Result<()> {
+    let mut args_ = vec![];
+    expect_args(args, 1, "quit", functions, variables, &mut args_)?;
 
-//     if args.len() > 1 {
-//         return Err(format!(
-//             "exit: Too many arguments {{{}, expected: max(1)}}",
-//             args.len()
-//         ));
-//     }
+    let code = match &args_[0] {
+        Some(code) => match code {
+            E::Integer(i) => i,
+            _ => bail!("quit: Exit code must be an integer."),
+        },
+        None => exit(0),
+    };
 
-//     let code = to_num(args.first().unwrap_or(&ASTNode::Number(0_f64)))?;
-
-//     let code = if code.fract() > 0_f64 {
-//         return Err("exit: Expected an integer as exit code".to_string());
-//     } else {
-//         code as i32
-//     };
-
-//     exit(code);
-// }
-// fn error(
-//     tokens: ASTNode,
-//     functions: HashMap<String, FunctionType>,
-//     variables: &mut HashMap<String, VariableType>,
-// ) -> Result<(), String> {
-//     let args = get_args(tokens, functions, variables);
-
-//     if args.is_empty() {
-//         return Err(format!(
-//             "exit: Not enough arguments {{{}, expected: min(1) max(2)}}",
-//             args.len()
-//         ));
-//     }
-
-//     if args.len() > 2 {
-//         return Err(format!(
-//             "exit: Too many arguments {{{}, expected: min(1) max(2)}}",
-//             args.len()
-//         ));
-//     }
-
-//     let msg = to_string(&args[0]);
-//     let code = to_num(args.get(1).unwrap_or(&ASTNode::Number(0_f64)))?;
-
-//     let code = if code.fract() > 0_f64 {
-//         return Err("exit: Expected an integer as exit code".to_string());
-//     } else {
-//         code as i32
-//     };
-
-//     eprintln!("{msg}");
-//     exit(code);
-// }
+    exit(
+        (*code)
+            .try_into()
+            .with_context(|| "Expected `i32`, got `i64`")
+            .with_note(|| format!("The maximum value of `i32` is {}, got {}", i32::MAX, code))?,
+    )
+}
 
 // fn str_join(
 //     tokens: ASTNode,

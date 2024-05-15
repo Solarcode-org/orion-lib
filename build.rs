@@ -3,10 +3,15 @@ use std::{
     path::Path,
 };
 
-use anyhow::{anyhow, Context, Result};
+use color_eyre::{
+    eyre::{eyre, WrapErr},
+    install, Result,
+};
 use rustlr::generate;
 
 fn main() -> Result<()> {
+    install()?;
+
     // Cache Script: Start
 
     let path = Path::new("grammar.cache");
@@ -23,7 +28,7 @@ fn main() -> Result<()> {
     // Cache Script: End
 
     let report = generate("workaround grammar/orion.grammar -o src/lrparser.rs -trace 0 -lr1")
-        .map_err(|e| anyhow!(e))
+        .map_err(|e| eyre!(e))
         .with_context(|| "Could not generate parser: `parser.rs`")?;
 
     eprintln!("{report}");

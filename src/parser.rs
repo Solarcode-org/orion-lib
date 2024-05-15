@@ -1,5 +1,5 @@
 //! The parser for Orion.
-use anyhow::{Context, Result};
+use color_eyre::{eyre::WrapErr, owo_colors::OwoColorize, Result, Section, SectionExt};
 use rustlr::{Bumper, ZCParser};
 
 use crate::{
@@ -10,12 +10,22 @@ use crate::{
 
 /// The parser function.
 pub fn parse<'a>(
+    count: usize,
     parser: &mut ZCParser<RetTypeEnum<'a>, Bumper<'a, ()>>,
     tokenizer: &mut orionlexer<'a>,
 ) -> Result<E<'a>> {
-    let result = parse_with(parser, tokenizer)
-        .map_err(|_| LineError(parser.linenum, "Parsing Error".to_string()))
-        .with_context(|| "Could not parse line, error occured.")?;
+    println!("line: {}", parser.linenum);
+
+    let result = parse_with(parser, tokenizer).map_err(|_| LineError {
+        line: count,
+        msg: "Parsing Error".to_string(),
+    });
+
+    let err = parser.get_err_report().to_string();
+
+    let result = result
+        .with_context(|| "Could not parse line, error occured.")
+        .with_section(move || err.header("Parser Error".bright_red()))?;
 
     Ok(result)
 }

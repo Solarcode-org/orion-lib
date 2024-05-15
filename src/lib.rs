@@ -21,8 +21,11 @@
 #![deny(rustdoc::invalid_rust_codeblocks)]
 
 use crate::orion::{setup_functions, setup_variables, FunctionType, VariableType};
-use anyhow::{bail, Context, Result};
 use bumpalo::Bump;
+use color_eyre::{
+    eyre::{bail, Context, ContextCompat},
+    install, Result,
+};
 use error::OrionErrors::LineError;
 use lrparser::{make_parser, orionlexer};
 use orion::{Functions, Variables};
@@ -47,6 +50,8 @@ pub mod parser;
 /// run_contents("say(\"Hello, world!\")".to_string());
 /// ```
 pub fn run_contents<S: AsRef<str>>(contents: S) -> Result<()> {
+    install()?;
+
     let functions = setup_functions();
     let mut variables = setup_variables();
     let bump = Bump::new();
@@ -56,13 +61,15 @@ pub fn run_contents<S: AsRef<str>>(contents: S) -> Result<()> {
     let mut parser = make_parser();
     parser.exstate.set(&bump);
 
+    parser.set_err_report(true);
+
     for (count, line) in contents.lines().enumerate() {
         if line.trim().is_empty() || line.trim().starts_with('#') {
             continue;
         }
 
         let mut tokenizer = orionlexer::from_str(line);
-        let ast = parse(&mut parser, &mut tokenizer)?;
+        let ast = parse(count + 1, &mut parser, &mut tokenizer)?;
 
         run(
             &ast,
@@ -95,16 +102,21 @@ fn run<'a>(
         E::FuncCall(func, args) => {
             let func = match functions.get(&func.to_string()) {
                 Some(f) => f,
-                None => bail!(LineError(line, format!("Could not find function `{func}`"))),
+                None => bail!(LineError {
+                    line,
+                    msg: format!("Could not find function `{func}`")
+                }),
             };
 
             match func {
-                FunctionType::Voidic(f) => {
-                    f(args, functions.to_owned(), vars.to_owned())?;
+                FunctionType::Void(f) => {
+                    f(args, functions.to_owned(), vars.to_owned())
+                        .with_context(|| format!("Error on line {line}"))?;
                     Ok(None)
                 }
-                FunctionType::Inputic(f) => {
-                    let result = f(args, functions.to_owned(), vars.to_owned())?;
+                FunctionType::String(f) => {
+                    let result = f(args, functions.to_owned(), vars.to_owned())
+                        .with_context(|| format!("Error on line {line}"))?;
 
                     Ok(Some(E::String(result.leak())))
                 }
