@@ -1,6 +1,10 @@
 //! The Orion definitions.
 
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
 use std::{
+    borrow::Cow,
     collections::HashMap,
     io::{stdin, stdout, Write as _},
     process::exit,
@@ -10,21 +14,26 @@ use color_eyre::{
     eyre::{bail, Context, ContextCompat},
     Result, Section,
 };
-use rustlr::LC;
 
-use crate::{orion_ast::E, run};
+use crate::{ast::Expr, error::OrionErrors::LineError, run};
 
 /// The functions hashmap type alias.
-pub type Functions<'a> = HashMap<String, FunctionType>;
+pub type Functions = HashMap<String, FunctionType>;
 
 /// The variables hashmap type alias.
 pub type Variables = HashMap<String, VariableType>;
 
 /// The function arguments type alias.
-pub type Args<'a> = &'a [&'a LC<E<'a>>];
+pub type Args<'a> = Vec<Expr>;
 
 /// The function type alias.
-pub type Functional<T> = fn(Args, Functions, Variables) -> Result<T>;
+pub type Functional<T> = fn(Args, &Metadata, &mut Variables) -> Result<T>;
+
+#[derive(Debug, Clone)]
+pub struct Metadata {
+    pub functions: Functions,
+    pub line: usize,
+}
 
 /// Function type.
 #[derive(Debug, Clone, Copy)]
@@ -33,7 +42,7 @@ pub enum FunctionType {
     Void(Functional<()>),
 
     /// Return String.
-    String(Functional<String>),
+    String(Functional<&'static str>),
 }
 
 /// Variable type.
@@ -43,7 +52,15 @@ pub enum VariableType {
     String(String),
 
     /// Integer variables.
-    Integer(i64),
+    Int8(i8),
+    Int16(i16),
+    Int32(i32),
+    Int64(i64),
+
+    Uint8(u8),
+    Uint16(u16),
+    Uint32(u32),
+    Uint64(u64),
 
     /// Float variables.
     Float(f64),
@@ -52,12 +69,12 @@ pub enum VariableType {
     None,
 }
 
-pub(crate) fn setup_functions<'a>() -> Functions<'a> {
+pub(crate) fn setup_functions() -> Functions {
     let mut functions = HashMap::new();
 
     functions.insert("say".to_string(), FunctionType::Void(say));
     functions.insert("ask".to_string(), FunctionType::String(ask));
-    functions.insert("quit".to_string(), FunctionType::Void(quit));
+    // functions.insert("quit".to_string(), FunctionType::Void(quit));
 
     functions
 }
@@ -73,95 +90,69 @@ pub(crate) fn setup_variables() -> Variables {
     variables
 }
 
-// fn to_string(token: &ASTNode) -> String {
-//     match &token {
-//         ASTNode::String(s) => s.to_string(),
-//         ASTNode::Func(f, args) => format!("{f:?}, {args:?}"),
-//         ASTNode::Number(n) => n.to_string(),
-//         _ => String::new(),
-//     }
-// }
-
-// fn to_num(token: &ASTNode) -> Result<f64, String> {
-//     match &token {
-//         ASTNode::Number(n) => Ok(*n),
-//         ty => Err(format!("Type {ty:?} cannot be converted to number")),
-//     }
-// }
-
-fn get_args<'a>(
-    args: &'a [&LC<E>],
-    functions: Functions,
-    variables: Variables,
-    get: &mut Vec<Option<E<'a>>>,
-) -> Result<()> {
+fn get_args(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<Vec<Option<Expr>>> {
     let mut args_ = vec![];
 
     for arg in args {
-        args_.push(run(
-            &arg.0,
-            arg.line(),
-            &functions,
-            crate::VariablesForRun::Immutable(variables.clone()),
-        )?)
+        args_.push(run(arg, meta, variables)?);
     }
 
-    *get = args_;
-
-    Ok(())
+    Ok(args_)
 }
 
-fn expect_args<'a, T: AsRef<str>>(
-    args: &'a [&LC<E>],
+fn expect_args<T: AsRef<str>>(
+    args: Args,
     args_no: usize,
     func: T,
-    functions: Functions,
-    variables: Variables,
-    get: &mut Vec<Option<E<'a>>>,
-) -> Result<()> {
-    let mut args_ = vec![];
-    get_args(args, functions, variables, &mut args_)?;
+    meta: &Metadata,
+    variables: &mut Variables,
+) -> Result<Vec<Option<Expr>>> {
+    let args = get_args(args, meta, variables)?;
 
-    if args_.len() < args_no {
-        bail!(
-            "{}: Not enough arguments ({}, expected: {})",
-            func.as_ref(),
-            args.len(),
-            args_no
-        );
+    if args.len() < args_no {
+        bail!(LineError {
+            line: meta.line,
+            msg: format!(
+                "{}: Not enough arguments ({}, expected: {})",
+                func.as_ref(),
+                args.len(),
+                args_no
+            )
+        });
     }
 
-    if args_.len() > args_no {
-        bail!(
-            "{}: Too many arguments ({}, expected: {})",
-            func.as_ref(),
-            args.len(),
-            args_no
-        );
+    if args.len() > args_no {
+        bail!(LineError {
+            line: meta.line,
+            msg: format!(
+                "{}: Too many arguments ({}, expected: {})",
+                func.as_ref(),
+                args.len(),
+                args_no
+            )
+        });
     }
 
-    *get = args_;
-
-    Ok(())
+    Ok(args)
 }
 
-fn say<'a>(
-    args: &'a [&'a LC<E<'a>>],
-    functions: HashMap<String, FunctionType>,
-    variables: HashMap<String, VariableType>,
-) -> Result<()> {
-    let mut args_ = vec![];
-    get_args(args, functions, variables, &mut args_)?;
+fn say(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<()> {
+    let args = get_args(args, meta, variables)?;
 
-    for arg in args_ {
+    for arg in args {
         print!(
             "{}",
             if let Some(v) = arg {
                 match v {
-                    E::String(s) => s.to_string(),
-                    E::E_Nothing => "None".to_string(),
-                    E::Float(f) => f.to_string(),
-                    E::Integer(n) => n.to_string(),
+                    Expr::String(s) => s.to_string(),
+                    Expr::Int8(n) => n.to_string(),
+                    Expr::Int16(n) => n.to_string(),
+                    Expr::Int32(n) => n.to_string(),
+                    Expr::Int64(n) => n.to_string(),
+                    Expr::Uint8(n) => n.to_string(),
+                    Expr::Uint16(n) => n.to_string(),
+                    Expr::Uint32(n) => n.to_string(),
+                    Expr::Uint64(n) => n.to_string(),
                     _ => unimplemented!(),
                 }
             } else {
@@ -177,20 +168,15 @@ fn say<'a>(
     Ok(())
 }
 
-fn ask<'a>(
-    args: &'a [&'a LC<E<'a>>],
-    functions: Functions,
-    variables: Variables,
-) -> Result<String> {
-    let mut args_ = vec![];
-    expect_args(args, 1, "ask", functions, variables, &mut args_)?;
+fn ask(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<&'static str> {
+    let args = expect_args(args, 1, "ask", meta, variables)?;
 
-    let binding = &args_[0]
+    let binding = &args[0]
         .clone()
         .with_context(|| "ask: Prompt must be a string")?;
 
     let prompt = match binding {
-        E::String(s) => s,
+        Expr::String(s) => s,
         _ => bail!("ask: Prompt must be a string"),
     };
 
@@ -202,45 +188,45 @@ fn ask<'a>(
 
     stdin().read_line(&mut inp)?;
 
-    Ok(inp.trim().to_string())
+    Ok(inp.trim().to_string().leak())
 }
 
-fn quit<'a>(args: &'a [&'a LC<E<'a>>], functions: Functions, variables: Variables) -> Result<()> {
-    let mut args_ = vec![];
-    expect_args(args, 1, "quit", functions, variables, &mut args_)?;
+// fn quit<'a>(args: &'a [&'a LC<E<'a>>], functions: Functions, variables: Variables) -> Result<()> {
+//     let mut args_ = vec![];
+//     expect_args(args, 1, "quit", functions, variables, &mut args_)?;
 
-    let code = match &args_[0] {
-        Some(code) => match code {
-            E::Integer(i) => i,
-            _ => bail!("quit: Exit code must be an integer."),
-        },
-        None => exit(0),
-    };
+//     let code = match &args_[0] {
+//         Some(code) => match code {
+//             E::Integer(i) => i,
+//             _ => bail!("quit: Exit code must be an integer."),
+//         },
+//         None => exit(0),
+//     };
 
-    exit(
-        (*code)
-            .try_into()
-            .with_context(|| "Expected `i32`, got `i64`")
-            .with_note(|| format!("The maximum value of `i32` is {}, got {}", i32::MAX, code))?,
-    )
-}
-
-// fn str_join(
-//     tokens: ASTNode,
-//     functions: HashMap<String, FunctionType>,
-//     variables: &mut HashMap<String, VariableType>,
-// ) -> Result<String, String> {
-//     let args = get_args(tokens, functions, variables);
-
-//     if args.is_empty() {
-//         return Err("Empty joining list".to_string());
-//     }
-
-//     let mut joined = String::new();
-
-//     for arg in args {
-//         joined.push_str(&to_string(&arg))
-//     }
-
-//     Ok(joined)
+//     exit(
+//         (*code)
+//             .try_into()
+//             .with_context(|| "Expected `i32`, got `i64`")
+//             .with_note(|| format!("The maximum value of `i32` is {}, got {}", i32::MAX, code))?,
+//     )
 // }
+
+// // fn str_join(
+// //     tokens: ASTNode,
+// //     functions: HashMap<String, FunctionType>,
+// //     variables: &mut HashMap<String, VariableType>,
+// // ) -> Result<String, String> {
+// //     let args = get_args(tokens, functions, variables);
+
+// //     if args.is_empty() {
+// //         return Err("Empty joining list".to_string());
+// //     }
+
+// //     let mut joined = String::new();
+
+// //     for arg in args {
+// //         joined.push_str(&to_string(&arg))
+// //     }
+
+// //     Ok(joined)
+// // }

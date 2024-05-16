@@ -14,12 +14,11 @@ categories = ["compilers"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bumpalo = "3.16.0"
 color-eyre = "0.6.3"
 logos = "0.14.0"
-rustlr = { version = "0.5.1", default-features = false }
 thiserror = "1.0.60"
+lalrpop-util = { version = "0.20.2", features = ["lexer", "unicode"] }
 
 [build-dependencies]
 color-eyre = "0.6.3"
-rustlr = "0.5.1"
+lalrpop = "0.20.2"

@@ -1,41 +1,36 @@
 //! The parser for Orion.
-use color_eyre::{eyre::WrapErr, owo_colors::OwoColorize, Result, Section, SectionExt};
-use rustlr::{Bumper, ZCParser};
+// use color_eyre::{eyre::WrapErr, owo_colors::OwoColorize, Result, Section, SectionExt};
 
-use crate::{
-    error::OrionErrors::LineError,
-    lrparser::{orionlexer, parse_train_with, parse_with, RetTypeEnum},
-    orion_ast::E,
-};
+// use crate::error::OrionErrors::LineError;
 
-/// The parser function.
-pub fn parse<'a>(
-    count: usize,
-    parser: &mut ZCParser<RetTypeEnum<'a>, Bumper<'a, ()>>,
-    tokenizer: &mut orionlexer<'a>,
-) -> Result<E<'a>> {
-    let result =
-        parse_with(parser, tokenizer /* "grammar/orion.grammar" */).map_err(|_| LineError {
-            line: count,
-            msg: "Parsing Error".to_string(),
-        });
+// /// The parser function.
+// pub fn parse<'a>(
+//     count: usize,
+//     parser: &mut ZCParser<RetTypeEnum<'a>, Bumper<'a, ()>>,
+//     tokenizer: &mut orionlexer<'a>,
+// ) -> Result<E<'a>> {
+//     let result =
+//         parse_with(parser, tokenizer /* "grammar/orion.grammar" */).map_err(|_| LineError {
+//             line: count,
+//             msg: "Parsing Error".to_string(),
+//         });
 
-    let err = parser.get_err_report().to_string();
+//     let err = parser.get_err_report().to_string();
 
-    let result = result
-        .with_context(|| "Could not parse line, error occured.")
-        .with_section(move || err.header("Parser Error".bright_red()))?;
+//     let result = result
+//         .with_context(|| "Could not parse line, error occured.")
+//         .with_section(move || err.header("Parser Error".bright_red()))?;
 
-    Ok(result)
-}
+//     Ok(result)
+// }
 
-pub(crate) fn _parse_train<'a, P: AsRef<str>>(
-    parser: &mut ZCParser<RetTypeEnum<'a>, Bumper<'a, ()>>,
-    tokenizer: &mut orionlexer<'a>,
-    parserpath: P,
-) {
-    parse_train_with(parser, tokenizer, parserpath.as_ref()).unwrap_or_else(|x| x);
-}
+// pub(crate) fn _parse_train<'a, P: AsRef<str>>(
+//     parser: &mut ZCParser<RetTypeEnum<'a>, Bumper<'a, ()>>,
+//     tokenizer: &mut orionlexer<'a>,
+//     parserpath: P,
+// ) {
+//     parse_train_with(parser, tokenizer, parserpath.as_ref()).unwrap_or_else(|x| x);
+// }
 
 // #[cfg(test)]
 // mod tests {

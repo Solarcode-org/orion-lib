@@ -1,0 +1,47 @@
+use crate::ast::Expr;
+use std::str::FromStr;
+use lalrpop_util::ParseError;
+
+grammar;
+
+pub Exprs = Comma<Expr>;
+
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e { // (2)
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};
+
+pub Expr: Expr = {
+    <i:Ident> "(" <e:Exprs> ")" => Expr::FuncCall(i, e),
+    String => Expr::String(<>),
+    Int =>? {
+        if let Ok(n) = u8::try_from(<>) {
+            Ok(Expr::Uint8(n))
+        } else if let Ok(n) = u16::try_from(<>) {
+            Ok(Expr::Uint16(n))
+        } else if let Ok(n) = u32::try_from(<>) {
+            Ok(Expr::Uint32(n))
+        } else if let Ok(n) = u64::try_from(<>) {
+            Ok(Expr::Uint64(n))
+        } else if let Ok(n) = i8::try_from(<>) {
+            Ok(Expr::Int8(n))
+        } else if let Ok(n) = i16::try_from(<>) {
+            Ok(Expr::Int16(n))
+        } else if let Ok(n) = i32::try_from(<>) {
+            Ok(Expr::Int32(n))
+        } else {
+            Ok(Expr::Int64(<>))
+        }
+    },
+    "let" <i:Ident> "=" <e:Expr> => Expr::Let(i, Box::new(e)),
+    Ident => Expr::Ident(<>)
+};
+
+Ident: String = r"[A-Za-z_][A-Za-z\d_]*" => <>.to_string();
+String: String = r#""(\\([tnr"']|[0-9a-fA-F]{2}|u[0-9a-fA-F]+)|[^"])+""# => <>[1..<>.len()-1].to_string();
+Int: i64 = r"\-?[0-9]+" =>? i64::from_str(<>).map_err(|_| ParseError::User { error: "Number is too big." });

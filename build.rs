@@ -1,13 +1,13 @@
 use std::{
     fs::{read_to_string, write},
     path::Path,
+    process::Command,
 };
 
 use color_eyre::{
     eyre::{eyre, WrapErr},
     install, Result,
 };
-use rustlr::generate;
 
 fn main() -> Result<()> {
     install()?;
@@ -15,23 +15,26 @@ fn main() -> Result<()> {
     // Cache Script: Start
 
     let path = Path::new("grammar.cache");
-    let grammar = read_to_string("grammar/orion.grammar")?;
+    let grammar = read_to_string("src/lrparser.lalrpop")
+        .with_context(|| "Could not find gramamr `src/lrparser.lalrpop`")?;
 
     if path.exists() {
         let contents = read_to_string(path)?;
 
         if contents == grammar {
-            return Ok(());
+            // return Ok(());
         }
     }
 
     // Cache Script: End
 
-    let report = generate("workaround grammar/orion.grammar -o src/lrparser.rs -trace 0 -lr1")
-        .map_err(|e| eyre!(e))
-        .with_context(|| "Could not generate parser: `parser.rs`")?;
+    Command::new("cd").arg("src").output()?;
 
-    eprintln!("{report}");
+    lalrpop::process_root()
+        .map_err(|e| eyre!(e.to_string()))
+        .with_context(|| "Could not process all the files in the current directory.")?;
+
+    Command::new("cd").arg("..").output()?;
 
     // Write cache.
     write("grammar.cache", grammar)?;
