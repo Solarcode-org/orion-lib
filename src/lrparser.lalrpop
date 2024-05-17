@@ -1,3 +1,5 @@
+/// The LR(1) Parser for Orion.
+
 use crate::ast::Expr;
 use std::str::FromStr;
 use lalrpop_util::ParseError;

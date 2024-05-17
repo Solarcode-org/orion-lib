@@ -17,7 +17,7 @@
 //! run_contents("say(\"Hello, world!\")".to_string());
 //! ```
 
-// #![deny(missing_docs)]
+#![deny(missing_docs)]
 #![deny(rustdoc::invalid_rust_codeblocks)]
 
 use ast::Expr;
@@ -33,9 +33,11 @@ use error::OrionErrors::LineError;
 pub mod ast;
 mod error;
 mod orion;
-// pub mod parser;
 
-lalrpop_mod!(pub lrparser);
+lalrpop_mod!(
+#[allow(missing_docs)]
+pub lrparser
+);
 
 /// Run the contents of an Orion file.
 ///
@@ -277,134 +279,327 @@ fn run(ast: Expr, meta: &Metadata, variables: &mut Variables) -> Result<Option<E
     }
 }
 
-//     match ast {
-//         E::FuncCall(func, args) => {
-//             let func = match functions.get(&func.to_string()) {
-//                 Some(f) => f,
-//                 None => bail!(LineError {
-//                     line,
-//                     msg: format!("Could not find function `{func}`")
-//                 }),
-//             };
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-//             match func {
-//                 FunctionType::Void(f) => {
-//                     f(args, functions.to_owned(), vars.to_owned())
-//                         .with_context(|| format!("Error on line {line}"))?;
-//                     Ok(None)
-//                 }
-//                 FunctionType::String(f) => {
-//                     let result = f(args, functions.to_owned(), vars.to_owned())
-//                         .with_context(|| format!("Error on line {line}"))?;
+    #[test]
+    fn test_i8() -> Result<()> {
+        let functions = setup_functions();
 
-//                     Ok(Some(E::String(result.leak())))
-//                 }
-//             }
-//         }
-//         E::Minus(a, b) => Ok(Some(E::Float(
-//             get_float(a, line, functions, vars)? - get_float(b, line, functions, vars)?,
-//         ))),
-//         E::Plus(a, b) => Ok(Some(E::Float(
-//             get_float(a, line, functions, vars)? + get_float(b, line, functions, vars)?,
-//         ))),
-//         E::Multiply(a, b) => Ok(Some(E::Float(
-//             get_float(a, line, functions, vars)? * get_float(b, line, functions, vars)?,
-//         ))),
-//         E::String(s) => Ok(Some(E::String(s))),
-//         E::Divide(a, b) => Ok(Some(E::Float(
-//             get_float(a, line, functions, vars)? / get_float(b, line, functions, vars)?,
-//         ))),
-//         E::E_Nothing => Ok(None),
-//         E::Let(varname, value) => {
-//             let variables = match variables {
-//                 VariablesForRun::Immutable(_) => {
-//                     bail!("line {line}: Cannot create variable in this context.")
-//                 }
-//                 VariablesForRun::Mutable(vars) => vars,
-//             };
+        let meta = Metadata { functions, line: 1 };
 
-//             let value = run(
-//                 value.to_owned(),
-//                 line,
-//                 functions,
-//                 VariablesForRun::Mutable(variables),
-//             )?;
+        let mut variables = setup_variables();
 
-//             variables.insert(
-//                 varname.to_string(),
-//                 match value {
-//                     Some(v) => match v {
-//                         E::Integer(n) => VariableType::Integer(n),
-//                         E::Float(f) => VariableType::Float(f),
-//                         E::String(s) => VariableType::String(s.to_string()),
-//                         _ => unimplemented!(),
-//                     },
-//                     None => VariableType::None,
-//                 },
-//             );
+        assert_eq!(
+            run(Expr::Int8(1), &meta, &mut variables)?,
+            Some(Expr::Int8(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Subtract(Box::new(Expr::Int8(1)), Box::new(Expr::Int8(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Int8(0))
+        );
+        assert_eq!(
+            run(
+                Expr::Multiply(Box::new(Expr::Int8(1)), Box::new(Expr::Int8(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Int8(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Divide(Box::new(Expr::Int8(1)), Box::new(Expr::Int8(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Int8(1))
+        );
 
-//             Ok(None)
-//         }
-//         E::Integer(n) => Ok(Some(E::Integer(*n))),
-//         E::Float(f) => Ok(Some(E::Float(*f))),
-//         E::Ident(ident) => {
-//             let var = vars
-//                 .get(&ident.to_string())
-//                 .with_context(|| format!("Could not find name `{ident}`"))?;
+        Ok(())
+    }
 
-//             match var {
-//                 VariableType::Integer(n) => Ok(Some(E::Integer(*n))),
-//                 VariableType::Float(f) => Ok(Some(E::Float(*f))),
-//                 VariableType::String(s) => Ok(Some(E::String(s.to_owned().leak()))),
-//                 VariableType::None => Ok(None),
-//             }
-//         }
-//     }
-// }
+    #[test]
+    fn test_i16() -> Result<()> {
+        let functions = setup_functions();
 
-// fn get_float(ast: &E, line: usize, functions: &Functions, variables: &Variables) -> Result<f64> {
-//     let num = run(
-//         ast,
-//         line,
-//         functions,
-//         VariablesForRun::Immutable(variables.clone()),
-//     )?;
+        let meta = Metadata { functions, line: 1 };
 
-//     Ok(match num {
-//         Some(E::Float(n)) => n,
-//         Some(E::Integer(n)) => n as f64,
-//         _ => bail!("line {line}: Expected a number"),
-//     })
-// }
+        let mut variables = setup_variables();
 
-// #[cfg(test)]
-// mod tests {
-//     use self::parser::_parse_train as parse_train;
+        assert_eq!(
+            run(Expr::Int16(1), &meta, &mut variables)?,
+            Some(Expr::Int16(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Subtract(Box::new(Expr::Int16(1)), Box::new(Expr::Int16(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Int16(0))
+        );
+        assert_eq!(
+            run(
+                Expr::Multiply(Box::new(Expr::Int16(1)), Box::new(Expr::Int16(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Int16(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Divide(Box::new(Expr::Int16(1)), Box::new(Expr::Int16(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Int16(1))
+        );
 
-//     use super::*;
+        Ok(())
+    }
 
-//     #[test]
-//     fn test_run_contents() -> Result<()> {
-//         run_contents("say(\"Hello!\")".to_string())?;
-//         Ok(())
-//     }
+    #[test]
+    fn test_i32() -> Result<()> {
+        let functions = setup_functions();
 
-//     #[test]
-//     fn test_trainer() {
-//         let bump = Bump::new();
+        let meta = Metadata { functions, line: 1 };
 
-//         let mut parser = make_parser();
-//         parser.exstate.set(&bump);
+        let mut variables = setup_variables();
 
-//         let mut tokenizer = orionlexer::from_str(
-//             r#"say("Hello", "world!")
-// say "gnu"
-//         "#
-//             .trim(),
-//         );
+        assert_eq!(
+            run(Expr::Int32(1), &meta, &mut variables)?,
+            Some(Expr::Int32(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Subtract(Box::new(Expr::Int32(1)), Box::new(Expr::Int32(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Int32(0))
+        );
+        assert_eq!(
+            run(
+                Expr::Multiply(Box::new(Expr::Int32(1)), Box::new(Expr::Int32(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Int32(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Divide(Box::new(Expr::Int32(1)), Box::new(Expr::Int32(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Int32(1))
+        );
 
-//         let parserpath = "src/parser.rs";
+        Ok(())
+    }
 
-//         parse_train(&mut parser, &mut tokenizer, parserpath);
-//     }
-// }
+    #[test]
+    fn test_i64() -> Result<()> {
+        let functions = setup_functions();
+
+        let meta = Metadata { functions, line: 1 };
+
+        let mut variables = setup_variables();
+
+        assert_eq!(
+            run(Expr::Int64(1), &meta, &mut variables)?,
+            Some(Expr::Int64(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Subtract(Box::new(Expr::Int64(1)), Box::new(Expr::Int64(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Int64(0))
+        );
+        assert_eq!(
+            run(
+                Expr::Multiply(Box::new(Expr::Int64(1)), Box::new(Expr::Int64(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Int64(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Divide(Box::new(Expr::Int64(1)), Box::new(Expr::Int64(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Int64(1))
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_u8() -> Result<()> {
+        let functions = setup_functions();
+
+        let meta = Metadata { functions, line: 1 };
+
+        let mut variables = setup_variables();
+
+        assert_eq!(
+            run(Expr::Uint8(1), &meta, &mut variables)?,
+            Some(Expr::Uint8(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Subtract(Box::new(Expr::Uint8(1)), Box::new(Expr::Uint8(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Uint8(0))
+        );
+        assert_eq!(
+            run(
+                Expr::Multiply(Box::new(Expr::Uint8(1)), Box::new(Expr::Uint8(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Uint8(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Divide(Box::new(Expr::Uint8(1)), Box::new(Expr::Uint8(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Uint8(1))
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_u16() -> Result<()> {
+        let functions = setup_functions();
+
+        let meta = Metadata { functions, line: 1 };
+
+        let mut variables = setup_variables();
+
+        assert_eq!(
+            run(Expr::Uint16(1), &meta, &mut variables)?,
+            Some(Expr::Uint16(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Subtract(Box::new(Expr::Uint16(1)), Box::new(Expr::Uint16(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Uint16(0))
+        );
+        assert_eq!(
+            run(
+                Expr::Multiply(Box::new(Expr::Uint16(1)), Box::new(Expr::Uint16(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Uint16(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Divide(Box::new(Expr::Uint16(1)), Box::new(Expr::Uint16(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Uint16(1))
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_u32() -> Result<()> {
+        let functions = setup_functions();
+
+        let meta = Metadata { functions, line: 1 };
+
+        let mut variables = setup_variables();
+
+        assert_eq!(
+            run(Expr::Uint32(1), &meta, &mut variables)?,
+            Some(Expr::Uint32(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Subtract(Box::new(Expr::Uint32(1)), Box::new(Expr::Uint32(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Uint32(0))
+        );
+        assert_eq!(
+            run(
+                Expr::Multiply(Box::new(Expr::Uint32(1)), Box::new(Expr::Uint32(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Uint32(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Divide(Box::new(Expr::Uint32(1)), Box::new(Expr::Uint32(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Uint32(1))
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_u64() -> Result<()> {
+        let functions = setup_functions();
+
+        let meta = Metadata { functions, line: 1 };
+
+        let mut variables = setup_variables();
+
+        assert_eq!(
+            run(Expr::Uint64(1), &meta, &mut variables)?,
+            Some(Expr::Uint64(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Subtract(Box::new(Expr::Uint64(1)), Box::new(Expr::Uint64(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Uint64(0))
+        );
+        assert_eq!(
+            run(
+                Expr::Multiply(Box::new(Expr::Uint64(1)), Box::new(Expr::Uint64(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Uint64(1))
+        );
+        assert_eq!(
+            run(
+                Expr::Divide(Box::new(Expr::Uint64(1)), Box::new(Expr::Uint64(1))),
+                &meta,
+                &mut variables
+            )?,
+            Some(Expr::Uint64(1))
+        );
+
+        Ok(())
+    }
+}
