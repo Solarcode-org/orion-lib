@@ -28,13 +28,13 @@ fn main() -> Result<()> {
 
     // Cache Script: End
 
-    Command::new("cd").arg("src").output()?;
+    Command::new("sh").arg("-c").arg("cd").arg("src").output()?;
 
     lalrpop::process_root()
         .map_err(|e| eyre!(e.to_string()))
         .with_context(|| "Could not process all the files in the current directory.")?;
 
-    Command::new("cd").arg("..").output()?;
+    Command::new("sh").arg("-c").arg("cd").arg("..").output()?;
 
     // Write cache.
     write("grammar.cache", grammar)?;

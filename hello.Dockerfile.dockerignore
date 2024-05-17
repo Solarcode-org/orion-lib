@@ -12,4 +12,3 @@ README.md
 Dockerfile
 *.Dockerfile
 .dockerignore
-build.rs

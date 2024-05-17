@@ -10,10 +10,6 @@ COPY --from=planner /usr/src/orion-lib/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 
 COPY . .
-RUN echo 'use color_eyre::{eyre::{eyre,WrapErr},install,Result};\
-    fn main()->Result<()>{install()?;\
-    lalrpop::process_root().map_err(|e|eyre!(e.to_string())).with_context(||"Could not process all the files in the current directory.")?;\
-    Ok(())}' > build.rs
 RUN cargo build --release
 RUN cargo build --release --example hello_world
 
