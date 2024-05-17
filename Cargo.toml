@@ -15,7 +15,6 @@ categories = ["compilers"]
 
 [dependencies]
 color-eyre = "0.6.3"
-logos = "0.14.0"
 thiserror = "1.0.60"
 lalrpop-util = { version = "0.20.2", features = ["lexer", "unicode"] }
 

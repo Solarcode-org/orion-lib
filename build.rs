@@ -16,7 +16,7 @@ fn main() -> Result<()> {
 
     let path = Path::new("grammar.cache");
     let grammar = read_to_string("src/lrparser.lalrpop")
-        .with_context(|| "Could not find gramamr `src/lrparser.lalrpop`")?;
+        .with_context(|| "Could not find grammar `src/lrparser.lalrpop`")?;
 
     if path.exists() {
         let contents = read_to_string(path)?;

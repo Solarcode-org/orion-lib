@@ -22,7 +22,7 @@
 
 use ast::Expr;
 use color_eyre::{
-    eyre::{ContextCompat, WrapErr},
+    eyre::{bail, ContextCompat, WrapErr},
     install, Result,
 };
 use lalrpop_util::lalrpop_mod;
@@ -61,7 +61,13 @@ pub fn run_contents<S: ToString>(contents: S) -> Result<()> {
     let mut variables = setup_variables();
 
     for (count, line) in contents.lines().enumerate() {
-        metadata.line = count;
+        metadata.line = count + 1;
+
+        let line = if let Some((line, _)) = line.split_once('#') {
+            line
+        } else {
+            line
+        };
 
         if line.trim().is_empty() || line.trim().starts_with('#') {
             continue;
@@ -123,6 +129,10 @@ fn run(ast: Expr, meta: &Metadata, variables: &mut Variables) -> Result<Option<E
                         Expr::Ident(_) => unimplemented!(),
                         Expr::FuncCall(_, _) => unimplemented!(),
                         Expr::Let(_, _) => unimplemented!(),
+                        Expr::Add(_, _) => unimplemented!(),
+                        Expr::Subtract(_, _) => unimplemented!(),
+                        Expr::Multiply(_, _) => unimplemented!(),
+                        Expr::Divide(_, _) => unimplemented!(),
                     },
                     None => orion::VariableType::None,
                 },
@@ -151,6 +161,117 @@ fn run(ast: Expr, meta: &Metadata, variables: &mut Variables) -> Result<Option<E
             };
 
             Ok(var)
+        }
+        Expr::Add(a, b) => {
+            let a = run(*a, meta, variables)?;
+            let b = run(*b, meta, variables)?;
+
+            match (a, b) {
+                (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => Ok(Some(Expr::Int8(a + b))),
+                (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => Ok(Some(Expr::Int16(a + b))),
+                (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => Ok(Some(Expr::Int32(a + b))),
+                (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => Ok(Some(Expr::Int64(a + b))),
+                (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => Ok(Some(Expr::Uint8(a + b))),
+                (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => Ok(Some(Expr::Uint16(a + b))),
+                (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => Ok(Some(Expr::Uint32(a + b))),
+                (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => Ok(Some(Expr::Uint64(a + b))),
+
+                (None, _) | (_, None) => bail!(LineError {
+                    line,
+                    msg: "add: Cannot use None in arithmetic".to_string(),
+                }),
+
+                _ => {
+                    bail!(LineError {
+                        line,
+                        msg: "add: Cannot perform arithmetic between two different types."
+                            .to_string(),
+                    })
+                }
+            }
+        }
+        Expr::Subtract(a, b) => {
+            let a = run(*a, meta, variables)?;
+            let b = run(*b, meta, variables)?;
+
+            match (a, b) {
+                (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => Ok(Some(Expr::Int8(a - b))),
+                (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => Ok(Some(Expr::Int16(a - b))),
+                (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => Ok(Some(Expr::Int32(a - b))),
+                (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => Ok(Some(Expr::Int64(a - b))),
+                (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => Ok(Some(Expr::Uint8(a - b))),
+                (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => Ok(Some(Expr::Uint16(a - b))),
+                (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => Ok(Some(Expr::Uint32(a - b))),
+                (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => Ok(Some(Expr::Uint64(a - b))),
+
+                (None, _) | (_, None) => bail!(LineError {
+                    line,
+                    msg: "subtract: Cannot use None in arithmetic".to_string(),
+                }),
+
+                _ => {
+                    bail!(LineError {
+                        line,
+                        msg: "subtract: Cannot perform arithmetic between two different types."
+                            .to_string()
+                    })
+                }
+            }
+        }
+        Expr::Multiply(a, b) => {
+            let a = run(*a, meta, variables)?;
+            let b = run(*b, meta, variables)?;
+
+            match (a, b) {
+                (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => Ok(Some(Expr::Int8(a * b))),
+                (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => Ok(Some(Expr::Int16(a * b))),
+                (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => Ok(Some(Expr::Int32(a * b))),
+                (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => Ok(Some(Expr::Int64(a * b))),
+                (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => Ok(Some(Expr::Uint8(a * b))),
+                (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => Ok(Some(Expr::Uint16(a * b))),
+                (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => Ok(Some(Expr::Uint32(a * b))),
+                (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => Ok(Some(Expr::Uint64(a * b))),
+
+                (None, _) | (_, None) => bail!(LineError {
+                    line,
+                    msg: "multiply: Cannot use None in arithmetic".to_string(),
+                }),
+
+                _ => {
+                    bail!(LineError {
+                        line,
+                        msg: "multiply: Cannot perform arithmetic between two different types"
+                            .to_string()
+                    })
+                }
+            }
+        }
+        Expr::Divide(a, b) => {
+            let a = run(*a, meta, variables)?;
+            let b = run(*b, meta, variables)?;
+
+            match (a, b) {
+                (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => Ok(Some(Expr::Int8(a / b))),
+                (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => Ok(Some(Expr::Int16(a / b))),
+                (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => Ok(Some(Expr::Int32(a / b))),
+                (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => Ok(Some(Expr::Int64(a / b))),
+                (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => Ok(Some(Expr::Uint8(a / b))),
+                (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => Ok(Some(Expr::Uint16(a / b))),
+                (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => Ok(Some(Expr::Uint32(a / b))),
+                (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => Ok(Some(Expr::Uint64(a / b))),
+
+                (None, _) | (_, None) => bail!(LineError {
+                    line,
+                    msg: "Cannot use None in arithmetic".to_string(),
+                }),
+
+                _ => {
+                    bail!(LineError {
+                        line,
+                        msg: "Cannot perform arithmetic between two different types.".to_string(),
+                    })
+                }
+            }
         }
         e => Ok(Some(e)),
     }

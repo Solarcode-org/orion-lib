@@ -15,7 +15,7 @@ say("Did you know 12 * 5 is", prod, "?") # See next example for formatted string
                                          # the question mark.
 
 # Formatted string.
-let fmt = str_join(name, "!")
+let fmt = join(name, "!")
 
 # Call the user.
 say(fmt, "Come here.")

@@ -14,6 +14,11 @@ pub enum Expr {
 
     Ident(String),
 
+    Add(Box<Expr>, Box<Expr>),
+    Subtract(Box<Expr>, Box<Expr>),
+    Multiply(Box<Expr>, Box<Expr>),
+    Divide(Box<Expr>, Box<Expr>),
+
     FuncCall(String, Vec<Expr>),
 
     Let(String, Box<Expr>),

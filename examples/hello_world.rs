@@ -4,7 +4,7 @@ use color_eyre::Result;
 use orion_lib::run_contents;
 
 fn main() -> Result<()> {
-    run_contents(read_to_string("./examples/calc.or")?)?;
+    run_contents(read_to_string("examples/hello.or")?)?;
 
     Ok(())
 }

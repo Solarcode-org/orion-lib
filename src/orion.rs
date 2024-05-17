@@ -74,7 +74,9 @@ pub(crate) fn setup_functions() -> Functions {
 
     functions.insert("say".to_string(), FunctionType::Void(say));
     functions.insert("ask".to_string(), FunctionType::String(ask));
-    // functions.insert("quit".to_string(), FunctionType::Void(quit));
+    functions.insert("quit".to_string(), FunctionType::Void(quit));
+    functions.insert("join".to_string(), FunctionType::String(join));
+    functions.insert("type".to_string(), FunctionType::String(type_));
 
     functions
 }
@@ -88,6 +90,25 @@ pub(crate) fn setup_variables() -> Variables {
     );
 
     variables
+}
+
+fn to_string(arg: Option<Expr>) -> String {
+    if let Some(v) = arg {
+        match v {
+            Expr::String(s) => s.to_string(),
+            Expr::Int8(n) => n.to_string(),
+            Expr::Int16(n) => n.to_string(),
+            Expr::Int32(n) => n.to_string(),
+            Expr::Int64(n) => n.to_string(),
+            Expr::Uint8(n) => n.to_string(),
+            Expr::Uint16(n) => n.to_string(),
+            Expr::Uint32(n) => n.to_string(),
+            Expr::Uint64(n) => n.to_string(),
+            _ => unimplemented!(),
+        }
+    } else {
+        "None".to_string()
+    }
 }
 
 fn get_args(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<Vec<Option<Expr>>> {
@@ -140,25 +161,7 @@ fn say(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<()> {
     let args = get_args(args, meta, variables)?;
 
     for arg in args {
-        print!(
-            "{}",
-            if let Some(v) = arg {
-                match v {
-                    Expr::String(s) => s.to_string(),
-                    Expr::Int8(n) => n.to_string(),
-                    Expr::Int16(n) => n.to_string(),
-                    Expr::Int32(n) => n.to_string(),
-                    Expr::Int64(n) => n.to_string(),
-                    Expr::Uint8(n) => n.to_string(),
-                    Expr::Uint16(n) => n.to_string(),
-                    Expr::Uint32(n) => n.to_string(),
-                    Expr::Uint64(n) => n.to_string(),
-                    _ => unimplemented!(),
-                }
-            } else {
-                "None".to_string()
-            }
-        );
+        print!("{}", to_string(arg));
 
         print!(" ")
     }
@@ -191,42 +194,77 @@ fn ask(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<&'stati
     Ok(inp.trim().to_string().leak())
 }
 
-// fn quit<'a>(args: &'a [&'a LC<E<'a>>], functions: Functions, variables: Variables) -> Result<()> {
-//     let mut args_ = vec![];
-//     expect_args(args, 1, "quit", functions, variables, &mut args_)?;
+fn quit(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<()> {
+    let args = expect_args(args, 1, "quit", meta, variables)?;
 
-//     let code = match &args_[0] {
-//         Some(code) => match code {
-//             E::Integer(i) => i,
-//             _ => bail!("quit: Exit code must be an integer."),
-//         },
-//         None => exit(0),
-//     };
+    let code = match &args[0] {
+        Some(code) => match code {
+            Expr::Int8(n) => (*n).into(),
+            Expr::Int16(n) => (*n).into(),
+            Expr::Int32(n) => *n,
+            Expr::Int64(_) => bail!("quit: This number is too big to convert into exit code."),
+            Expr::Uint8(n) => (*n).into(),
+            Expr::Uint16(n) => (*n).into(),
+            Expr::Uint32(n) => (*n)
+                .try_into()
+                .with_context(|| "quit: Cannot convert number into exit code.")?,
+            Expr::Uint64(_) => bail!("quit: This number is too big to convert into exit code."),
+            Expr::String(_) => bail!("quit: Exit code must be an integer."),
+            Expr::Ident(_) => unimplemented!(),
+            Expr::FuncCall(_, _) => unimplemented!(),
+            Expr::Let(_, _) => unimplemented!(),
+            Expr::Add(_, _) => unimplemented!(),
+            Expr::Subtract(_, _) => unimplemented!(),
+            Expr::Multiply(_, _) => unimplemented!(),
+            Expr::Divide(_, _) => unimplemented!(),
+            // _ => bail!("quit: Exit code must be an integer."),
+        },
+        None => exit(0),
+    };
 
-//     exit(
-//         (*code)
-//             .try_into()
-//             .with_context(|| "Expected `i32`, got `i64`")
-//             .with_note(|| format!("The maximum value of `i32` is {}, got {}", i32::MAX, code))?,
-//     )
-// }
+    exit(code)
+}
 
-// // fn str_join(
-// //     tokens: ASTNode,
-// //     functions: HashMap<String, FunctionType>,
-// //     variables: &mut HashMap<String, VariableType>,
-// // ) -> Result<String, String> {
-// //     let args = get_args(tokens, functions, variables);
+fn join(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<&'static str> {
+    let args = get_args(args, meta, variables)?;
 
-// //     if args.is_empty() {
-// //         return Err("Empty joining list".to_string());
-// //     }
+    if args.is_empty() {
+        bail!("join: No arguments provided");
+    }
 
-// //     let mut joined = String::new();
+    let mut joined = String::new();
 
-// //     for arg in args {
-// //         joined.push_str(&to_string(&arg))
-// //     }
+    for arg in args {
+        joined.push_str(&to_string(arg))
+    }
 
-// //     Ok(joined)
-// // }
+    Ok(joined.leak())
+}
+
+fn type_(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<&'static str> {
+    let args = expect_args(args, 1, "type", meta, variables)?;
+
+    let arg = &args[0];
+
+    Ok(match arg {
+        Some(e) => match e {
+            Expr::Int8(_) => "i8",
+            Expr::Int16(_) => "i16",
+            Expr::Int32(_) => "i32",
+            Expr::Int64(_) => "i64",
+            Expr::Uint8(_) => "u8",
+            Expr::Uint16(_) => "u16",
+            Expr::Uint32(_) => "u32",
+            Expr::Uint64(_) => "u64",
+            Expr::String(_) => "String",
+            Expr::Ident(_) => unimplemented!(),
+            Expr::Add(_, _) => unimplemented!(),
+            Expr::Subtract(_, _) => unimplemented!(),
+            Expr::Multiply(_, _) => unimplemented!(),
+            Expr::Divide(_, _) => unimplemented!(),
+            Expr::FuncCall(_, _) => unimplemented!(),
+            Expr::Let(_, _) => unimplemented!(),
+        },
+        None => "None",
+    })
+}

@@ -17,8 +17,7 @@ Comma<T>: Vec<T> = {
 };
 
 pub Expr: Expr = {
-    <i:Ident> "(" <e:Exprs> ")" => Expr::FuncCall(i, e),
-    String => Expr::String(<>),
+    #[precedence(level="0")]
     Int =>? {
         if let Ok(n) = u8::try_from(<>) {
             Ok(Expr::Uint8(n))
@@ -38,8 +37,20 @@ pub Expr: Expr = {
             Ok(Expr::Int64(<>))
         }
     },
+    String => Expr::String(<>),
+    Ident => Expr::Ident(<>),
+
+    #[precedence(level="1")] #[assoc(side="left")]
+    <a:Expr> "*" <b:Expr> => Expr::Multiply(Box::new(a), Box::new(b)),
+    <a:Expr> "/" <b:Expr> => Expr::Divide(Box::new(a), Box::new(b)),
+
+    #[precedence(level="2")] #[assoc(side="left")]
+    <a:Expr> "+" <b:Expr> => Expr::Add(Box::new(a), Box::new(b)),
+    <a:Expr> "-" <b:Expr> => Expr::Subtract(Box::new(a), Box::new(b)),
+
+    #[precedence(level="3")] #[assoc(side="left")]
+    <i:Ident> "(" <e:Exprs> ")" => Expr::FuncCall(i, e),
     "let" <i:Ident> "=" <e:Expr> => Expr::Let(i, Box::new(e)),
-    Ident => Expr::Ident(<>)
 };
 
 Ident: String = r"[A-Za-z_][A-Za-z\d_]*" => <>.to_string();

@@ -1,5 +1,0 @@
-say("Hello", "world")
-
-let stat = ask("How are you? ")
-
-say(stat)
