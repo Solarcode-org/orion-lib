@@ -1,21 +1,22 @@
 # Print the Orion version.
-say("Hello from Orion version", __env_version)
+say("Hello from Orion version", __env_version);
 
 # Ask the user their name.
-let name = ask("What is your name? ")
+let name = ask("What is your name? ");
 
 # Print the user's name.
-say("Hello", name)
+say("Hello", name);
 
 # Find the product of 12 and 5 (60).
-let prod = 12 * 5
+let prod = 12 * 5;
 
 # Print the product.
-say("Did you know 12 * 5 is", prod, "?") # See next example for formatted strings so you can remove the space before the
+say("Did you know 12 * 5 is", prod, "?"); # See next example for formatted strings so you can remove the space before the
                                          # the question mark.
 
 # Formatted string.
-let fmt = join(name, "!")
+let fmt = 
+    join(name, "!");
 
 # Call the user.
-say(fmt, "Come here.")
+say(fmt, "Come here.");

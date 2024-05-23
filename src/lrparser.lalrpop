@@ -1,12 +1,12 @@
 /// The LR(1) Parser for Orion.
 
-use crate::ast::Expr;
+use crate::utils::ast::Expr;
 use std::str::FromStr;
 use lalrpop_util::ParseError;
 
 grammar;
 
-pub Exprs = Comma<Expr>;
+Exprs = Comma<Expr>;
 
 Comma<T>: Vec<T> = {
     <mut v:(<T> ",")*> <e:T?> => match e { // (2)
@@ -18,7 +18,7 @@ Comma<T>: Vec<T> = {
     }
 };
 
-pub Expr: Expr = {
+Expr: Expr = {
     #[precedence(level="0")]
     Int =>? {
         if let Ok(n) = u8::try_from(<>) {
@@ -39,22 +39,85 @@ pub Expr: Expr = {
             Ok(Expr::Int64(<>))
         }
     },
+    #[precedence(level="0")]
     String => Expr::String(<>),
-    Ident => Expr::Ident(<>),
+
+    #[precedence(level="0")]
+    "true" => Expr::Bool(true),
+
+    #[precedence(level="0")]
+    "false" => Expr::Bool(false),
 
     #[precedence(level="1")] #[assoc(side="left")]
-    <a:Expr> "*" <b:Expr> => Expr::Multiply(Box::new(a), Box::new(b)),
-    <a:Expr> "/" <b:Expr> => Expr::Divide(Box::new(a), Box::new(b)),
+    Ident => Expr::Ident(<>),
 
     #[precedence(level="2")] #[assoc(side="left")]
-    <a:Expr> "+" <b:Expr> => Expr::Add(Box::new(a), Box::new(b)),
-    <a:Expr> "-" <b:Expr> => Expr::Subtract(Box::new(a), Box::new(b)),
+    <a:Expr> "*" <b:Expr> => Expr::Multiply(Box::new(a), Box::new(b)),
+
+    #[precedence(level="2")] #[assoc(side="left")]
+    <a:Expr> "/" <b:Expr> => Expr::Divide(Box::new(a), Box::new(b)),
 
     #[precedence(level="3")] #[assoc(side="left")]
+    <a:Expr> "+" <b:Expr> => Expr::Add(Box::new(a), Box::new(b)),
+
+    #[precedence(level="2")] #[assoc(side="left")]
+    <a:Expr> "-" <b:Expr> => Expr::Subtract(Box::new(a), Box::new(b)),
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    <a:Expr> ">" <b:Expr> => Expr::GreaterThan(Box::new(a), Box::new(b)),
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    <a:Expr> "<" <b:Expr> => Expr::LesserThan(Box::new(a), Box::new(b)),
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    <a:Expr> "==" <b:Expr> => Expr::StrictlyEquals(Box::new(a), Box::new(b)),
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    <a:Expr> "!=" <b:Expr> => Expr::NotEquals(Box::new(a), Box::new(b)),
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    <a:Expr> ">=" <b:Expr> => Expr::GreaterThanOrStrictlyEquals(Box::new(a), Box::new(b)),
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    <a:Expr> "<=" <b:Expr> => Expr::LesserThanOrStrictlyEquals(Box::new(a), Box::new(b)),
+
+    #[precedence(level="5")] #[assoc(side="left")]
+    "{" <s:Statements> "}" => Expr::Scope(s),
+
+    #[precedence(level="6")] #[assoc(side="left")]
+    "if" <c:Expr> <s:Expr> => Expr::If(Box::new(c), Box::new(s)),
+
+    #[precedence(level="6")] #[assoc(side="left")]
+    "if" <c:Expr> <s:Expr> "else" <e:Expr> => Expr::IfElse(Box::new(c), Box::new(s), Box::new(e)),
+
+    #[precedence(level="6")] #[assoc(side="left")]
     <i:Ident> "(" <e:Exprs> ")" => Expr::FuncCall(i, e),
+
+    #[precedence(level="6")] #[assoc(side="left")]
+    <e:Expr> "." <i:Ident> => Expr::Property(Box::new(e), i),
+
+    #[precedence(level="6")] #[assoc(side="left")]
+    <e:Expr> "." <i:Ident> "(" <a:Exprs> ")" => Expr::Method(Box::new(e), i, a),
+
+    #[precedence(level="7")] #[assoc(side="left")]
     "let" <i:Ident> "=" <e:Expr> => Expr::Let(i, Box::new(e)),
 };
 
+pub Statements: Vec<Expr> = {
+    <a:Expr> <b:(";" Expr)*> ";"? => {
+        let mut statements = vec![a];
+        statements.extend(b.into_iter().map(|e| e.1));
+        statements
+    }
+}
+
+match {
+    r"\s*" => { }, // The default whitespace skipping is disabled if an `ignore pattern` is specified
+    r"#[^\n\r]*[\n\r]*" => { }, // Skip `# comments`
+    r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/" => { },  // Skip `/* comments */`
+    _ 
+}
+
 Ident: String = r"[A-Za-z_][A-Za-z\d_]*" => <>.to_string();
 String: String = r#""(\\([tnr"']|[0-9a-fA-F]{2}|u[0-9a-fA-F]+)|[^"])+""# => <>[1..<>.len()-1].to_string();
-Int: i64 = r"\-?[0-9]+" =>? i64::from_str(<>).map_err(|_| ParseError::User { error: "Number is too big." });
+Int: i64 = r"-?[0-9]+" =>? i64::from_str(<>).map_err(|_| ParseError::User { error: "Number is too big." });

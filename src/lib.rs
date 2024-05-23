@@ -13,30 +13,36 @@
 //! Then use the functions
 //! ```rust
 //! use orion_lib::run_contents;
+//! use color_eyre::Result;
 //!
-//! run_contents("say(\"Hello, world!\")".to_string());
+//! fn main() -> Result<()> {
+//!     run_contents("say(\"Hello, world!\")".to_string())?;
+//!     Ok(())
+//! }
 //! ```
 
 #![deny(missing_docs)]
 #![deny(rustdoc::invalid_rust_codeblocks)]
 
-use ast::Expr;
 use color_eyre::{
     eyre::{bail, ContextCompat, WrapErr},
-    install, Result,
+    install,
 };
 use lalrpop_util::lalrpop_mod;
-use orion::{setup_functions, setup_variables, Metadata, Variables};
+use utils::ast::Expr;
+use utils::orion::{setup_functions, setup_variables, Metadata, Variables};
 
-use error::OrionErrors::LineError;
+use crate::utils::orion::{Function, Variable};
+use prelude::*;
 
-pub mod ast;
 mod error;
-mod orion;
+mod prelude;
+mod types;
+mod utils;
 
 lalrpop_mod!(
-#[allow(missing_docs)]
-pub lrparser
+    #[allow(missing_docs)]
+    lrparser
 );
 
 /// Run the contents of an Orion file.
@@ -47,8 +53,12 @@ pub lrparser
 ///
 /// ```rust
 /// use orion_lib::run_contents;
+/// use color_eyre::Result;
 ///
-/// run_contents("say(\"Hello, world!\")".to_string());
+/// fn main() -> Result<()> {
+///     run_contents("say(\"Hello, world!\")".to_string())?;
+///     Ok(())
+/// }
 /// ```
 pub fn run_contents<S: ToString>(contents: S) -> Result<()> {
     install()?;
@@ -57,32 +67,18 @@ pub fn run_contents<S: ToString>(contents: S) -> Result<()> {
 
     let mut metadata = Metadata {
         functions: setup_functions(),
-        line: 0,
+        ..Default::default()
     };
 
     let mut variables = setup_variables();
 
-    for (count, line) in contents.lines().enumerate() {
+    let ast: Vec<Expr> = lrparser::StatementsParser::new()
+        .parse(contents)
+        .with_context(|| Errors::GeneralError("Could not parse file".to_string()))?;
+
+    for (count, expr) in ast.iter().enumerate() {
         metadata.line = count + 1;
-
-        let line = if let Some((line, _)) = line.split_once('#') {
-            line
-        } else {
-            line
-        };
-
-        if line.trim().is_empty() || line.trim().starts_with('#') {
-            continue;
-        }
-
-        let ast = lrparser::ExprParser::new()
-            .parse(line)
-            .with_context(|| LineError {
-                line: metadata.line,
-                msg: "Failed to parse line".to_string(),
-            })?;
-
-        run(ast, &metadata, &mut variables)?;
+        run(expr.to_owned(), &metadata, &mut variables)?;
     }
 
     Ok(())
@@ -94,20 +90,21 @@ fn run(ast: Expr, meta: &Metadata, variables: &mut Variables) -> Result<Option<E
 
     match ast {
         Expr::FuncCall(func, args) => {
-            let func = functions.get(func.as_str()).with_context(|| LineError {
-                line,
-                msg: format!("Could not find function `{func}`"),
-            })?;
+            let func = functions
+                .get(func.as_str())
+                .with_context(|| Errors::LineError {
+                    line,
+                    msg: f!("Could not find function `{func}`"),
+                })?;
 
             Ok(match func {
-                orion::FunctionType::Void(f) => {
-                    f(args, meta, variables)
-                        .with_context(|| format!("Error on line {}", meta.line))?;
+                Function::Void(f) => {
+                    f(args, meta, variables).with_context(|| f!("Error on line {}", meta.line))?;
                     return Ok(None);
                 }
-                orion::FunctionType::String(f) => Some(Expr::String(
+                Function::String(f) => Some(Expr::String(
                     f(args, meta, variables)
-                        .with_context(|| format!("Error on line {}", meta.line))?
+                        .with_context(|| f!("Error on line {}", meta.line))?
                         .to_string(),
                 )),
             })
@@ -119,164 +116,377 @@ fn run(ast: Expr, meta: &Metadata, variables: &mut Variables) -> Result<Option<E
                 name,
                 match value {
                     Some(expr) => match expr {
-                        Expr::Int8(n) => orion::VariableType::Int8(n),
-                        Expr::Int16(n) => orion::VariableType::Int16(n),
-                        Expr::Int32(n) => orion::VariableType::Int32(n),
-                        Expr::Int64(n) => orion::VariableType::Int64(n),
-                        Expr::Uint8(n) => orion::VariableType::Uint8(n),
-                        Expr::Uint16(n) => orion::VariableType::Uint16(n),
-                        Expr::Uint32(n) => orion::VariableType::Uint32(n),
-                        Expr::Uint64(n) => orion::VariableType::Uint64(n),
-                        Expr::String(s) => orion::VariableType::String(s),
-                        Expr::Ident(_) => unimplemented!(),
-                        Expr::FuncCall(_, _) => unimplemented!(),
-                        Expr::Let(_, _) => unimplemented!(),
-                        Expr::Add(_, _) => unimplemented!(),
-                        Expr::Subtract(_, _) => unimplemented!(),
-                        Expr::Multiply(_, _) => unimplemented!(),
-                        Expr::Divide(_, _) => unimplemented!(),
+                        Expr::Int8(n) => Variable::Int8(n, meta.scope),
+                        Expr::Int16(n) => Variable::Int16(n, meta.scope),
+                        Expr::Int32(n) => Variable::Int32(n, meta.scope),
+                        Expr::Int64(n) => Variable::Int64(n, meta.scope),
+                        Expr::Uint8(n) => Variable::Uint8(n, meta.scope),
+                        Expr::Uint16(n) => Variable::Uint16(n, meta.scope),
+                        Expr::Uint32(n) => Variable::Uint32(n, meta.scope),
+                        Expr::Uint64(n) => Variable::Uint64(n, meta.scope),
+                        Expr::String(s) => Variable::String(s, meta.scope),
+                        _ => todo!(),
                     },
-                    None => orion::VariableType::None,
+                    None => Variable::None(meta.scope),
                 },
             );
 
             Ok(None)
         }
         Expr::Ident(ident) => {
-            let var = variables.get(&ident).with_context(|| LineError {
+            let var = variables.get(&ident).with_context(|| Errors::LineError {
                 line,
-                msg: format!("Could not find variable `{ident}`"),
+                msg: f!("Could not find variable `{ident}`"),
             })?;
 
             let var = match var {
-                orion::VariableType::String(s) => Some(Expr::String(s.to_string())),
-                orion::VariableType::Int8(n) => Some(Expr::Int8(*n)),
-                orion::VariableType::Int16(n) => Some(Expr::Int16(*n)),
-                orion::VariableType::Int32(n) => Some(Expr::Int32(*n)),
-                orion::VariableType::Int64(n) => Some(Expr::Int64(*n)),
-                orion::VariableType::Uint8(n) => Some(Expr::Uint8(*n)),
-                orion::VariableType::Uint16(n) => Some(Expr::Uint16(*n)),
-                orion::VariableType::Uint32(n) => Some(Expr::Uint32(*n)),
-                orion::VariableType::Uint64(n) => Some(Expr::Uint64(*n)),
-                orion::VariableType::Float(_) => todo!(),
-                orion::VariableType::None => None,
+                Variable::String(s, _) => Some(Expr::String(s.to_string())),
+                Variable::Int8(n, _) => Some(Expr::Int8(*n)),
+                Variable::Int16(n, _) => Some(Expr::Int16(*n)),
+                Variable::Int32(n, _) => Some(Expr::Int32(*n)),
+                Variable::Int64(n, _) => Some(Expr::Int64(*n)),
+                Variable::Uint8(n, _) => Some(Expr::Uint8(*n)),
+                Variable::Uint16(n, _) => Some(Expr::Uint16(*n)),
+                Variable::Uint32(n, _) => Some(Expr::Uint32(*n)),
+                Variable::Uint64(n, _) => Some(Expr::Uint64(*n)),
+                Variable::None(_) => None,
+                _ => todo!(),
             };
 
             Ok(var)
         }
         Expr::Add(a, b) => {
-            let a = run(*a, meta, variables)?;
-            let b = run(*b, meta, variables)?;
+            let a = a.eval(meta, variables)?;
+            let b = b.eval(meta, variables)?;
 
-            match (a, b) {
-                (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => Ok(Some(Expr::Int8(a + b))),
-                (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => Ok(Some(Expr::Int16(a + b))),
-                (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => Ok(Some(Expr::Int32(a + b))),
-                (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => Ok(Some(Expr::Int64(a + b))),
-                (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => Ok(Some(Expr::Uint8(a + b))),
-                (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => Ok(Some(Expr::Uint16(a + b))),
-                (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => Ok(Some(Expr::Uint32(a + b))),
-                (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => Ok(Some(Expr::Uint64(a + b))),
-
-                (None, _) | (_, None) => bail!(LineError {
-                    line,
-                    msg: "add: Cannot use None in arithmetic".to_string(),
-                }),
-
-                _ => {
-                    bail!(LineError {
-                        line,
-                        msg: "add: Cannot perform arithmetic between two different types."
-                            .to_string(),
-                    })
-                }
-            }
+            W(a) + W(b)
         }
         Expr::Subtract(a, b) => {
-            let a = run(*a, meta, variables)?;
-            let b = run(*b, meta, variables)?;
+            let a = a.eval(meta, variables)?;
+            let b = b.eval(meta, variables)?;
 
-            match (a, b) {
-                (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => Ok(Some(Expr::Int8(a - b))),
-                (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => Ok(Some(Expr::Int16(a - b))),
-                (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => Ok(Some(Expr::Int32(a - b))),
-                (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => Ok(Some(Expr::Int64(a - b))),
-                (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => Ok(Some(Expr::Uint8(a - b))),
-                (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => Ok(Some(Expr::Uint16(a - b))),
-                (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => Ok(Some(Expr::Uint32(a - b))),
-                (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => Ok(Some(Expr::Uint64(a - b))),
-
-                (None, _) | (_, None) => bail!(LineError {
-                    line,
-                    msg: "subtract: Cannot use None in arithmetic".to_string(),
-                }),
-
-                _ => {
-                    bail!(LineError {
-                        line,
-                        msg: "subtract: Cannot perform arithmetic between two different types."
-                            .to_string()
-                    })
-                }
-            }
+            W(a) - W(b)
         }
         Expr::Multiply(a, b) => {
-            let a = run(*a, meta, variables)?;
-            let b = run(*b, meta, variables)?;
+            let a = a.eval(meta, variables)?;
+            let b = b.eval(meta, variables)?;
 
-            match (a, b) {
-                (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => Ok(Some(Expr::Int8(a * b))),
-                (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => Ok(Some(Expr::Int16(a * b))),
-                (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => Ok(Some(Expr::Int32(a * b))),
-                (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => Ok(Some(Expr::Int64(a * b))),
-                (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => Ok(Some(Expr::Uint8(a * b))),
-                (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => Ok(Some(Expr::Uint16(a * b))),
-                (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => Ok(Some(Expr::Uint32(a * b))),
-                (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => Ok(Some(Expr::Uint64(a * b))),
-
-                (None, _) | (_, None) => bail!(LineError {
-                    line,
-                    msg: "multiply: Cannot use None in arithmetic".to_string(),
-                }),
-
-                _ => {
-                    bail!(LineError {
-                        line,
-                        msg: "multiply: Cannot perform arithmetic between two different types"
-                            .to_string()
-                    })
-                }
-            }
+            W(a) * W(b)
         }
         Expr::Divide(a, b) => {
-            let a = run(*a, meta, variables)?;
-            let b = run(*b, meta, variables)?;
+            let a = a.eval(meta, variables)?;
+            let b = b.eval(meta, variables)?;
 
-            match (a, b) {
-                (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => Ok(Some(Expr::Int8(a / b))),
-                (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => Ok(Some(Expr::Int16(a / b))),
-                (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => Ok(Some(Expr::Int32(a / b))),
-                (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => Ok(Some(Expr::Int64(a / b))),
-                (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => Ok(Some(Expr::Uint8(a / b))),
-                (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => Ok(Some(Expr::Uint16(a / b))),
-                (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => Ok(Some(Expr::Uint32(a / b))),
-                (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => Ok(Some(Expr::Uint64(a / b))),
+            W(a) / W(b)
+        }
+        Expr::Scope(lines) => {
+            let mut value = None;
+            let meta = Metadata {
+                scope: meta.scope + 1,
+                ..meta.to_owned()
+            };
 
-                (None, _) | (_, None) => bail!(LineError {
-                    line,
-                    msg: "Cannot use None in arithmetic".to_string(),
-                }),
-
-                _ => {
-                    bail!(LineError {
-                        line,
-                        msg: "Cannot perform arithmetic between two different types.".to_string(),
-                    })
-                }
+            for line in lines {
+                value = run(line, &meta, variables)?;
             }
+
+            garbage(variables, &(meta.scope - 1));
+
+            Ok(value)
+        }
+        Expr::If(condition, scope) => {
+            let condition = run(*condition, meta, variables)?;
+
+            let value = if match condition {
+                Some(Expr::Bool(b)) => b,
+                _ => bail!("Invalid type for conditioning."),
+            } {
+                run(*scope, meta, variables)?
+            } else {
+                None
+            };
+
+            Ok(value)
+        }
+        Expr::IfElse(condition, if_code, else_code) => {
+            let condition = run(*condition, meta, variables)?;
+
+            let value = if match condition {
+                Some(Expr::Bool(b)) => b,
+                _ => bail!("Invalid type for conditioning."),
+            } {
+                run(*if_code, meta, variables)?
+            } else {
+                run(*else_code, meta, variables)?
+            };
+
+            Ok(value)
+        }
+        Expr::GreaterThan(a, b) => {
+            let a = a.eval(meta, variables)?;
+            let b = b.eval(meta, variables)?;
+
+            Ok(Some(Expr::Bool(match (a, b) {
+                (Some(a), Some(b)) => match (a, b) {
+                    (Expr::Int8(i), Expr::Int8(j)) => i > j,
+                    (Expr::Int16(i), Expr::Int16(j)) => i > j,
+                    (Expr::Int32(i), Expr::Int32(j)) => i > j,
+                    (Expr::Int64(i), Expr::Int64(j)) => i > j,
+                    (Expr::Uint8(i), Expr::Uint8(j)) => i > j,
+                    (Expr::Uint16(i), Expr::Uint16(j)) => i > j,
+                    (Expr::Uint32(i), Expr::Uint32(j)) => i > j,
+                    (Expr::Uint64(i), Expr::Uint64(j)) => i > j,
+                    (Expr::String(_), Expr::String(_)) => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare strings. Maybe you meant to compare their length?\
+                        `len(s1) > len(s2)`"
+                            .to_string()
+                    }),
+                    (Expr::Bool(_), Expr::Bool(_)) => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare booleans. What are you trying to achieve here 🤔?"
+                            .to_string()
+                    }),
+                    _ => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare between different types.".to_string()
+                    }),
+                },
+                (Some(_), None) => bail!(Errors::LineError {
+                    line,
+                    msg: "Cannot compare between different types.".to_string()
+                }),
+                (None, None) => true,
+                (None, Some(_)) => bail!(Errors::LineError {
+                    line,
+                    msg: "Cannot compare between different types.".to_string()
+                }),
+            })))
+        }
+        Expr::LesserThan(a, b) => {
+            let a = a.eval(meta, variables)?;
+            let b = b.eval(meta, variables)?;
+
+            Ok(Some(Expr::Bool(match (a, b) {
+                (Some(a), Some(b)) => match (a, b) {
+                    (Expr::Int8(i), Expr::Int8(j)) => i < j,
+                    (Expr::Int16(i), Expr::Int16(j)) => i < j,
+                    (Expr::Int32(i), Expr::Int32(j)) => i < j,
+                    (Expr::Int64(i), Expr::Int64(j)) => i < j,
+                    (Expr::Uint8(i), Expr::Uint8(j)) => i < j,
+                    (Expr::Uint16(i), Expr::Uint16(j)) => i < j,
+                    (Expr::Uint32(i), Expr::Uint32(j)) => i < j,
+                    (Expr::Uint64(i), Expr::Uint64(j)) => i < j,
+                    (Expr::String(_), Expr::String(_)) => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare strings. Maybe you meant to compare their length?\
+                        `len(s1) < len(s2)`"
+                            .to_string()
+                    }),
+                    (Expr::Bool(_), Expr::Bool(_)) => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare booleans. What are you trying to achieve here 🤔?"
+                            .to_string()
+                    }),
+                    _ => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare between different types.".to_string()
+                    }),
+                },
+                (Some(_), None) => bail!(Errors::LineError {
+                    line,
+                    msg: "Cannot compare between different types.".to_string()
+                }),
+                (None, None) => true,
+                (None, Some(_)) => bail!(Errors::LineError {
+                    line,
+                    msg: "Cannot compare between different types.".to_string()
+                }),
+            })))
+        }
+        Expr::StrictlyEquals(a, b) => {
+            let a = a.eval(meta, variables)?;
+            let b = b.eval(meta, variables)?;
+
+            Ok(Some(Expr::Bool(match (a, b) {
+                (Some(a), Some(b)) => match (a, b) {
+                    (Expr::Int8(i), Expr::Int8(j)) => i == j,
+                    (Expr::Int16(i), Expr::Int16(j)) => i == j,
+                    (Expr::Int32(i), Expr::Int32(j)) => i == j,
+                    (Expr::Int64(i), Expr::Int64(j)) => i == j,
+                    (Expr::Uint8(i), Expr::Uint8(j)) => i == j,
+                    (Expr::Uint16(i), Expr::Uint16(j)) => i == j,
+                    (Expr::Uint32(i), Expr::Uint32(j)) => i == j,
+                    (Expr::Uint64(i), Expr::Uint64(j)) => i == j,
+                    (Expr::String(_), Expr::String(_)) => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare strings. Maybe you meant to compare their length?\
+                        `len(s1) == len(s2)`"
+                            .to_string()
+                    }),
+                    (Expr::Bool(_), Expr::Bool(_)) => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare booleans. What are you trying to achieve here 🤔?"
+                            .to_string()
+                    }),
+                    _ => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare between different types.".to_string()
+                    }),
+                },
+                (Some(_), None) => bail!(Errors::LineError {
+                    line,
+                    msg: "Cannot compare between different types.".to_string()
+                }),
+                (None, None) => true,
+                (None, Some(_)) => bail!(Errors::LineError {
+                    line,
+                    msg: "Cannot compare between different types.".to_string()
+                }),
+            })))
+        }
+        Expr::NotEquals(a, b) => {
+            let a = a.eval(meta, variables)?;
+            let b = b.eval(meta, variables)?;
+
+            Ok(Some(Expr::Bool(match (a, b) {
+                (Some(a), Some(b)) => match (a, b) {
+                    (Expr::Int8(i), Expr::Int8(j)) => i != j,
+                    (Expr::Int16(i), Expr::Int16(j)) => i != j,
+                    (Expr::Int32(i), Expr::Int32(j)) => i != j,
+                    (Expr::Int64(i), Expr::Int64(j)) => i != j,
+                    (Expr::Uint8(i), Expr::Uint8(j)) => i != j,
+                    (Expr::Uint16(i), Expr::Uint16(j)) => i != j,
+                    (Expr::Uint32(i), Expr::Uint32(j)) => i != j,
+                    (Expr::Uint64(i), Expr::Uint64(j)) => i != j,
+                    (Expr::String(_), Expr::String(_)) => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare strings. Maybe you meant to compare their length?\
+                        `len(s1) != len(s2)`"
+                            .to_string()
+                    }),
+                    (Expr::Bool(_), Expr::Bool(_)) => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare booleans. What are you trying to achieve here 🤔?"
+                            .to_string()
+                    }),
+                    _ => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare between different types.".to_string()
+                    }),
+                },
+                (Some(_), None) => bail!(Errors::LineError {
+                    line,
+                    msg: "Cannot compare between different types.".to_string()
+                }),
+                (None, None) => true,
+                (None, Some(_)) => bail!(Errors::LineError {
+                    line,
+                    msg: "Cannot compare between different types.".to_string()
+                }),
+            })))
+        }
+        Expr::GreaterThanOrStrictlyEquals(a, b) => {
+            let a = a.eval(meta, variables)?;
+            let b = b.eval(meta, variables)?;
+
+            Ok(Some(Expr::Bool(match (a, b) {
+                (Some(a), Some(b)) => match (a, b) {
+                    (Expr::Int8(i), Expr::Int8(j)) => i >= j,
+                    (Expr::Int16(i), Expr::Int16(j)) => i >= j,
+                    (Expr::Int32(i), Expr::Int32(j)) => i >= j,
+                    (Expr::Int64(i), Expr::Int64(j)) => i >= j,
+                    (Expr::Uint8(i), Expr::Uint8(j)) => i >= j,
+                    (Expr::Uint16(i), Expr::Uint16(j)) => i >= j,
+                    (Expr::Uint32(i), Expr::Uint32(j)) => i >= j,
+                    (Expr::Uint64(i), Expr::Uint64(j)) => i >= j,
+                    (Expr::String(_), Expr::String(_)) => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare strings. Maybe you meant to compare their length?\
+                        `len(s1) >= len(s2)`"
+                            .to_string()
+                    }),
+                    (Expr::Bool(_), Expr::Bool(_)) => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare booleans. What are you trying to achieve here 🤔?"
+                            .to_string()
+                    }),
+                    _ => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare between different types.".to_string()
+                    }),
+                },
+                (Some(_), None) => bail!(Errors::LineError {
+                    line,
+                    msg: "Cannot compare between different types.".to_string()
+                }),
+                (None, None) => true,
+                (None, Some(_)) => bail!(Errors::LineError {
+                    line,
+                    msg: "Cannot compare between different types.".to_string()
+                }),
+            })))
+        }
+        Expr::LesserThanOrStrictlyEquals(a, b) => {
+            let a = a.eval(meta, variables)?;
+            let b = b.eval(meta, variables)?;
+
+            Ok(Some(Expr::Bool(match (a, b) {
+                (Some(a), Some(b)) => match (a, b) {
+                    (Expr::Int8(i), Expr::Int8(j)) => i <= j,
+                    (Expr::Int16(i), Expr::Int16(j)) => i <= j,
+                    (Expr::Int32(i), Expr::Int32(j)) => i <= j,
+                    (Expr::Int64(i), Expr::Int64(j)) => i <= j,
+                    (Expr::Uint8(i), Expr::Uint8(j)) => i <= j,
+                    (Expr::Uint16(i), Expr::Uint16(j)) => i <= j,
+                    (Expr::Uint32(i), Expr::Uint32(j)) => i <= j,
+                    (Expr::Uint64(i), Expr::Uint64(j)) => i <= j,
+                    (Expr::String(_), Expr::String(_)) => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare strings. Maybe you meant to compare their length?\
+                        `len(s1) <= len(s2)`"
+                            .to_string()
+                    }),
+                    (Expr::Bool(_), Expr::Bool(_)) => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare booleans. What are you trying to achieve here 🤔?"
+                            .to_string()
+                    }),
+                    _ => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot compare between different types.".to_string()
+                    }),
+                },
+                (Some(_), None) => bail!(Errors::LineError {
+                    line,
+                    msg: "Cannot compare between different types.".to_string()
+                }),
+                (None, None) => true,
+                (None, Some(_)) => bail!(Errors::LineError {
+                    line,
+                    msg: "Cannot compare between different types.".to_string()
+                }),
+            })))
         }
         e => Ok(Some(e)),
     }
+}
+
+fn garbage(variables: &mut Variables, scope_: &usize) {
+    variables.retain(|_, v| match v {
+        Variable::String(_, scope) => scope_ >= scope,
+        Variable::Int8(_, scope) => scope_ >= scope,
+        Variable::Int16(_, scope) => scope_ >= scope,
+        Variable::Int32(_, scope) => scope_ >= scope,
+        Variable::Int64(_, scope) => scope_ >= scope,
+        Variable::Uint8(_, scope) => scope_ >= scope,
+        Variable::Uint16(_, scope) => scope_ >= scope,
+        Variable::Uint32(_, scope) => scope_ >= scope,
+        Variable::Uint64(_, scope) => scope_ >= scope,
+        Variable::_Float32(_, scope) => scope_ >= scope,
+        Variable::_Float64(_, scope) => scope_ >= scope,
+        Variable::None(scope) => scope_ >= scope,
+    });
 }
 
 #[cfg(test)]
@@ -287,7 +497,10 @@ mod tests {
     fn test_i8() -> Result<()> {
         let functions = setup_functions();
 
-        let meta = Metadata { functions, line: 1 };
+        let meta = Metadata {
+            functions,
+            ..Default::default()
+        };
 
         let mut variables = setup_variables();
 
@@ -327,7 +540,10 @@ mod tests {
     fn test_i16() -> Result<()> {
         let functions = setup_functions();
 
-        let meta = Metadata { functions, line: 1 };
+        let meta = Metadata {
+            functions,
+            ..Default::default()
+        };
 
         let mut variables = setup_variables();
 
@@ -367,7 +583,10 @@ mod tests {
     fn test_i32() -> Result<()> {
         let functions = setup_functions();
 
-        let meta = Metadata { functions, line: 1 };
+        let meta = Metadata {
+            functions,
+            ..Default::default()
+        };
 
         let mut variables = setup_variables();
 
@@ -407,7 +626,10 @@ mod tests {
     fn test_i64() -> Result<()> {
         let functions = setup_functions();
 
-        let meta = Metadata { functions, line: 1 };
+        let meta = Metadata {
+            functions,
+            ..Default::default()
+        };
 
         let mut variables = setup_variables();
 
@@ -447,7 +669,10 @@ mod tests {
     fn test_u8() -> Result<()> {
         let functions = setup_functions();
 
-        let meta = Metadata { functions, line: 1 };
+        let meta = Metadata {
+            functions,
+            ..Default::default()
+        };
 
         let mut variables = setup_variables();
 
@@ -487,7 +712,10 @@ mod tests {
     fn test_u16() -> Result<()> {
         let functions = setup_functions();
 
-        let meta = Metadata { functions, line: 1 };
+        let meta = Metadata {
+            functions,
+            ..Default::default()
+        };
 
         let mut variables = setup_variables();
 
@@ -527,7 +755,10 @@ mod tests {
     fn test_u32() -> Result<()> {
         let functions = setup_functions();
 
-        let meta = Metadata { functions, line: 1 };
+        let meta = Metadata {
+            functions,
+            ..Default::default()
+        };
 
         let mut variables = setup_variables();
 
@@ -567,7 +798,10 @@ mod tests {
     fn test_u64() -> Result<()> {
         let functions = setup_functions();
 
-        let meta = Metadata { functions, line: 1 };
+        let meta = Metadata {
+            functions,
+            ..Default::default()
+        };
 
         let mut variables = setup_variables();
 

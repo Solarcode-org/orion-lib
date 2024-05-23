@@ -21,3 +21,10 @@ lalrpop-util = { version = "0.20.2", features = ["lexer", "unicode"] }
 [build-dependencies]
 color-eyre = "0.6.3"
 lalrpop = "0.20.2"
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "simple"
+harness = false
