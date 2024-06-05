@@ -1,10 +1,15 @@
 //! The Abstract Syntax Tree (AST) for Orion.
 
+use std::cmp::Ordering;
 use std::ops::{Add, Div, Mul, Sub};
-use color_eyre::eyre::bail;
 use crate::run;
 use crate::utils::orion::{Metadata, Variables};
 use crate::prelude::*;
+use crate::types::arrays::Array;
+use crate::types::bool::Bool;
+use crate::types::numbers::{Numeric, Uint16, Uint8, Uint32, Uint64};
+use crate::types::ObjectHolder;
+use crate::types::strings::Str;
 
 /// The Abstract Syntax Tree (AST) for Orion.
 #[derive(Debug, Clone, PartialEq)]
@@ -39,26 +44,41 @@ pub enum Expr {
     /// The Boolean type.
     Bool(bool),
 
+    /// Character.
+    Char(char),
+
     /// Used to describe an identifier (variable).
     Ident(String),
 
-    /// The addition expression.
-    Add(Box<Expr>, Box<Expr>),
+    /// Array type.
+    Array(Vec<Expr>),
 
-    /// The subtraction expression.
-    Subtract(Box<Expr>, Box<Expr>),
+    // /// The addition expression.
+    // Add(Box<Expr>, Box<Expr>),
+    //
+    // /// The subtraction expression.
+    // Subtract(Box<Expr>, Box<Expr>),
+    //
+    // /// The multiplication expression.
+    // Multiply(Box<Expr>, Box<Expr>),
+    //
+    // /// The division expression.
+    // Divide(Box<Expr>, Box<Expr>),
 
-    /// The multiplication expression.
-    Multiply(Box<Expr>, Box<Expr>),
+    /// Mathematical Operations.
+    Op(Box<Expr>, OpCode, Box<Expr>),
 
-    /// The division expression.
-    Divide(Box<Expr>, Box<Expr>),
+    /// Logical Comparison.
+    Compare(Box<Expr>, CompCode, Box<Expr>),
 
     /// The function call expression.
     FuncCall(String, Vec<Expr>),
 
     /// The variable creation expression.
     Let(String, Box<Expr>),
+
+    /// Re-assign an existing variable.
+    Reassign(String, ReassignCode, Box<Expr>),
 
     /// An if statement.
     If(Box<Expr>, Box<Expr>),
@@ -67,37 +87,76 @@ pub enum Expr {
     IfElse(Box<Expr>, Box<Expr>, Box<Expr>),
 
     /// A scope.
-    Scope(Vec<Expr>),
-
-    /// Greater than.
-    GreaterThan(Box<Expr>, Box<Expr>),
-
-    /// Lesser than.
-    LesserThan(Box<Expr>, Box<Expr>),
-
-    /// Strictly equals.
-    StrictlyEquals(Box<Expr>, Box<Expr>),
-
-    /// Not equals
-    NotEquals(Box<Expr>, Box<Expr>),
-
-    /// Greater than or strictly equals.
-    GreaterThanOrStrictlyEquals(Box<Expr>, Box<Expr>),
-
-    /// Lesser than or strictly equals.
-    LesserThanOrStrictlyEquals(Box<Expr>, Box<Expr>),
+    Scope(Vec<Option<Expr>>),
 
     /// Get a property.
     Property(Box<Expr>, String),
 
     /// Call a function.
-    Method(Box<Expr>, String, Vec<Expr>)
+    Method(Box<Expr>, String, Vec<Expr>),
+
+    /// For loop.
+    For(String, Box<Expr>, Box<Expr>),
+
+    /// Complex For loop.
+    ForComplex(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>),
+    
+    /// Slice notation,
+    Slice(Box<Expr>, Box<Expr>)
 }
 
 impl Expr {
     pub fn eval(self, meta: &Metadata, variables: &mut Variables) -> Result<Option<Expr>> {
-        run(self, meta, variables)
+        run(Some(self), meta, variables)
     }
+
+    pub fn to_methodical(&self, meta: &Metadata, variables: &mut Variables) -> Result<ObjectHolder>
+    {
+        Ok(ObjectHolder(match self {
+                Expr::Int8(_n) => /*Uint8::new(*_n)*/todo!(),
+                Expr::Int16(_n) => /*Uint8::new(*_n)*/todo!(),
+                Expr::Int32(_n) => /*Uint8::new(*_n)*/todo!(),
+                Expr::Int64(_n) => /*Uint8::new(*_n)*/todo!(),
+                Expr::Uint8(n) => Box::new(Uint8::new((*n).into())),
+                Expr::Uint16(n) => Box::new(Uint16::new((*n).into())),
+                Expr::Uint32(n) => Box::new(Uint32::new((*n).into())),
+                Expr::Uint64(n) => Box::new(Uint64::new((*n).try_into().with_context(
+                    || "Could not convert number to correct type."
+                )?)),
+                Expr::String(s) => Box::new(Str::new(s.to_string())),
+                Expr::Bool(b) => Box::new(Bool::new(*b)),
+                Expr::Array(array) => Box::new(Array::new(array.to_vec(), meta, variables)?),
+                _ => unimplemented!()
+            }
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum OpCode {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum CompCode {
+    Greater,
+    Lesser,
+    Equals,
+    NotEquals,
+    GreaterEquals,
+    LesserEquals,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ReassignCode {
+    Re,
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
 }
 
 impl Add for W<Option<Expr>> {
@@ -203,6 +262,96 @@ impl Div for W<Option<Expr>> {
 
             _ => {
                 bail!("divide: Cannot perform arithmetic between two different types.")
+            }
+        }
+    }
+}
+
+impl Eq for W<Option<Expr>> {}
+
+impl PartialEq<Self> for W<Option<Expr>> {
+    fn eq(&self, other: &Self) -> bool {
+        let a = &self.0;
+        let b = &other.0;
+
+        match (a, b) {
+            (Some(a), Some(b)) => match (a, b) {
+                (Expr::Int8(i), Expr::Int8(j)) => i == j,
+                (Expr::Int16(i), Expr::Int16(j)) => i == j,
+                (Expr::Int32(i), Expr::Int32(j)) => i == j,
+                (Expr::Int64(i), Expr::Int64(j)) => i == j,
+                (Expr::Uint8(i), Expr::Uint8(j)) => i == j,
+                (Expr::Uint16(i), Expr::Uint16(j)) => i == j,
+                (Expr::Uint32(i), Expr::Uint32(j)) => i == j,
+                (Expr::Uint64(i), Expr::Uint64(j)) => i == j,
+                (Expr::String(a), Expr::String(b)) => a == b,
+                (Expr::Bool(a), Expr::Bool(b)) => {
+                    eprintln!(
+                        "\x1b[93mWarning: Redundant comparison.\x1b[0m"
+                    );
+                    a == b
+                },
+                _ => panic!("\x1b[31Cannot compare between different types.\x1b[0m"),
+            },
+            (Some(_), None) => panic!("\x1b[31Cannot compare between different types.\x1b[0m"),
+            (None, None) => {
+                eprintln!(
+                    "\x1b[93mWarning: Consider using `is_none(some_v)` for `none` checks\x1b[0m"
+                );
+                true
+            },
+            (None, Some(_)) => panic!("\x1b[31Cannot compare between different types.\x1b[0m")
+        }
+    }
+}
+
+impl PartialOrd<Self> for W<Option<Expr>> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let a = &self.0;
+        let b = &other.0;
+
+        match (a, b) {
+            (Some(a), Some(b)) => match (a, b) {
+                (Expr::Int8(i), Expr::Int8(j)) => Some(i.cmp(j)),
+                (Expr::Int16(i), Expr::Int16(j)) => Some(i.cmp(j)),
+                (Expr::Int32(i), Expr::Int32(j)) => Some(i.cmp(j)),
+                (Expr::Int64(i), Expr::Int64(j)) => Some(i.cmp(j)),
+                (Expr::Uint8(i), Expr::Uint8(j)) => Some(i.cmp(j)),
+                (Expr::Uint16(i), Expr::Uint16(j)) => Some(i.cmp(j)),
+                (Expr::Uint32(i), Expr::Uint32(j)) => Some(i.cmp(j)),
+                (Expr::Uint64(i), Expr::Uint64(j)) => Some(i.cmp(j)),
+                (Expr::String(_), Expr::String(_)) => {
+                    eprintln!("\x1b[31Cannot compare strings.\
+                        Maybe you meant to compare their length? \
+                        `len(s1) > len(s2)`\x1b[0m");
+                    None
+                }
+
+                (Expr::Bool(_), Expr::Bool(_)) => {
+                    eprintln!("\x1b[31mError: Cannot compare booleans. \
+                        What are you trying to achieve here 🤔?\x1b[0m");
+                    None
+                }
+                _ => {
+                    eprintln!("\x1b[31mError: Cannot compare between different types.\x1b[0m");
+                    None
+                },
+            },
+            (Some(_), None) => {
+                eprintln!("\x1b[31mError: Cannot compare between different types.\x1b[0m");
+                None
+            },
+            (None, None) => {
+                eprintln!(
+                    "\x1b[93mError: Cannot compare `None` values\x1b[0m"
+                );
+                None
+            },
+            (None, Some(_)) => {
+                eprintln!(
+                    "\x1b[93mError: Cannot compare `None` values\x1b[0m"
+                );
+                None
             }
         }
     }

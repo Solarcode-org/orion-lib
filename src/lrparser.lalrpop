@@ -1,6 +1,6 @@
 /// The LR(1) Parser for Orion.
 
-use crate::utils::ast::Expr;
+use crate::utils::ast::{Expr, OpCode, CompCode, ReassignCode};
 use std::str::FromStr;
 use lalrpop_util::ParseError;
 
@@ -18,8 +18,22 @@ Comma<T>: Vec<T> = {
     }
 };
 
-Expr: Expr = {
-    #[precedence(level="0")]
+ExprOp: OpCode = {
+    "+" => OpCode::Add,
+    "-" => OpCode::Subtract,
+};
+
+FactorOp: OpCode = {
+    "*" => OpCode::Multiply,
+    "/" => OpCode::Divide,
+};
+
+Factor: Expr = {
+    <f:Factor> <o:FactorOp> <t:Term> => Expr::Op(Box::new(f), o, Box::new(t)),
+    Term,
+};
+
+Term: Expr = {
     Int =>? {
         if let Ok(n) = u8::try_from(<>) {
             Ok(Expr::Uint8(n))
@@ -39,77 +53,86 @@ Expr: Expr = {
             Ok(Expr::Int64(<>))
         }
     },
-    #[precedence(level="0")]
     String => Expr::String(<>),
-
-    #[precedence(level="0")]
+    Char =>? Ok(Expr::Char(<>)),
     "true" => Expr::Bool(true),
-
-    #[precedence(level="0")]
     "false" => Expr::Bool(false),
-
-    #[precedence(level="1")] #[assoc(side="left")]
+    "no" => Expr::Scope(vec![]),
     Ident => Expr::Ident(<>),
 
-    #[precedence(level="2")] #[assoc(side="left")]
-    <a:Expr> "*" <b:Expr> => Expr::Multiply(Box::new(a), Box::new(b)),
-
-    #[precedence(level="2")] #[assoc(side="left")]
-    <a:Expr> "/" <b:Expr> => Expr::Divide(Box::new(a), Box::new(b)),
-
-    #[precedence(level="3")] #[assoc(side="left")]
-    <a:Expr> "+" <b:Expr> => Expr::Add(Box::new(a), Box::new(b)),
-
-    #[precedence(level="2")] #[assoc(side="left")]
-    <a:Expr> "-" <b:Expr> => Expr::Subtract(Box::new(a), Box::new(b)),
-
-    #[precedence(level="4")] #[assoc(side="left")]
-    <a:Expr> ">" <b:Expr> => Expr::GreaterThan(Box::new(a), Box::new(b)),
-
-    #[precedence(level="4")] #[assoc(side="left")]
-    <a:Expr> "<" <b:Expr> => Expr::LesserThan(Box::new(a), Box::new(b)),
-
-    #[precedence(level="4")] #[assoc(side="left")]
-    <a:Expr> "==" <b:Expr> => Expr::StrictlyEquals(Box::new(a), Box::new(b)),
-
-    #[precedence(level="4")] #[assoc(side="left")]
-    <a:Expr> "!=" <b:Expr> => Expr::NotEquals(Box::new(a), Box::new(b)),
-
-    #[precedence(level="4")] #[assoc(side="left")]
-    <a:Expr> ">=" <b:Expr> => Expr::GreaterThanOrStrictlyEquals(Box::new(a), Box::new(b)),
-
-    #[precedence(level="4")] #[assoc(side="left")]
-    <a:Expr> "<=" <b:Expr> => Expr::LesserThanOrStrictlyEquals(Box::new(a), Box::new(b)),
-
-    #[precedence(level="5")] #[assoc(side="left")]
-    "{" <s:Statements> "}" => Expr::Scope(s),
-
-    #[precedence(level="6")] #[assoc(side="left")]
-    "if" <c:Expr> <s:Expr> => Expr::If(Box::new(c), Box::new(s)),
-
-    #[precedence(level="6")] #[assoc(side="left")]
-    "if" <c:Expr> <s:Expr> "else" <e:Expr> => Expr::IfElse(Box::new(c), Box::new(s), Box::new(e)),
-
-    #[precedence(level="6")] #[assoc(side="left")]
-    <i:Ident> "(" <e:Exprs> ")" => Expr::FuncCall(i, e),
-
-    #[precedence(level="6")] #[assoc(side="left")]
-    <e:Expr> "." <i:Ident> => Expr::Property(Box::new(e), i),
-
-    #[precedence(level="6")] #[assoc(side="left")]
-    <e:Expr> "." <i:Ident> "(" <a:Exprs> ")" => Expr::Method(Box::new(e), i, a),
-
-    #[precedence(level="7")] #[assoc(side="left")]
-    "let" <i:Ident> "=" <e:Expr> => Expr::Let(i, Box::new(e)),
+    "(" <Term> ")",
 };
 
-pub Statements: Vec<Expr> = {
-    <a:Expr> <b:(";" Expr)*> ";"? => {
-        let mut statements = vec![a];
-        statements.extend(b.into_iter().map(|e| e.1));
-        statements
-    }
+Comparison: Expr = {
+    <e:Factor> <o:CompOp> <f:Factor> => Expr::Compare(Box::new(e), o, Box::new(f)),
 }
+
+CompOp: CompCode = {
+    ">" => CompCode::Greater,
+    "<" => CompCode::Lesser,
+    "==" => CompCode::Equals,
+    "!=" => CompCode::NotEquals,
+    ">=" => CompCode::GreaterEquals,
+    "<=" => CompCode::LesserEquals,
+}
+
+Reassign: Expr = {
+    <i:Ident> <o:ReassignOp> <f:Factor> => Expr::Reassign(i, o, Box::new(f))
+}
+
+ReassignOp: ReassignCode = {
+    "=" => ReassignCode::Re,
+    "+=" => ReassignCode::Plus,
+    "-=" => ReassignCode::Minus,
+    "*=" => ReassignCode::Multiply,
+    "/=" => ReassignCode::Divide,
+}
+
+Expr: Expr = {
+    #[precedence(level="0")]
+    <e:Expr> <o:ExprOp> <f:Factor> => Expr::Op(Box::new(e), o, Box::new(f)),
+    Factor,
+    <e:Term> "[" <f:Factor> "]" => Expr::Slice(Box::new(e), Box::new(f)),
+    Comparison,
+
+    "[" <e:Exprs> "]" => Expr::Array(e),
+
+    <Ident> "(" <Exprs> ")" => Expr::FuncCall(<>),
+
+    <t:Term> "." <i:Ident> => Expr::Property(Box::new(t), i),
+    <t:Term> "." <i:Ident> "(" <a:Exprs> ")" => Expr::Method(Box::new(t), i, a),
+    Scope => <>,
+
+    #[precedence(level="1")] #[assoc(side="left")]
+    "let" <i:Ident> "=" <e:Expr> => Expr::Let(i, Box::new(e)),
+    Reassign,
+
+    #[precedence(level="2")] #[assoc(side="left")]
+    "if" <c:Expr> <s:Scope> => Expr::If(Box::new(c), Box::new(s)),
+    "if" <c:Expr> <s:Scope> "else" <e:Scope> => Expr::IfElse(Box::new(c), Box::new(s), Box::new(e)),
+    "for" <i:Ident> "in" <e:Expr> <s:Scope> => Expr::For(i, Box::new(e), Box::new(s)),
+
+    #[precedence(level="3")] #[assoc(side="left")]
+    "forx" "(" <i:Expr> ";" <c:Expr> ";" <e:Expr> ")" <s:Scope> => {
+        Expr::ForComplex(Box::new(i), Box::new(c), Box::new(e), Box::new(s))
+    }
+};
+
+Scope: Expr = "{" <Statements> "}" => Expr::Scope(<>);
+
+pub Statements: Vec<Option<Expr>> = {
+    <a:Expr> <b:(";" Expr)*> ";" => {
+        let mut statements = vec![Some(a)];
+        statements.extend(b.into_iter().map(|e| Some(e.1)));
+        statements.push(None);
+        statements
+    },
+    <a:Expr> <b:(";" Expr)*> => {
+        let mut statements = vec![Some(a)];
+        statements.extend(b.into_iter().map(|e| Some(e.1)));
+        statements
+    },
+};
 
 match {
     r"\s*" => { }, // The default whitespace skipping is disabled if an `ignore pattern` is specified
@@ -119,5 +142,30 @@ match {
 }
 
 Ident: String = r"[A-Za-z_][A-Za-z\d_]*" => <>.to_string();
-String: String = r#""(\\([tnr"']|[0-9a-fA-F]{2}|u[0-9a-fA-F]+)|[^"])+""# => <>[1..<>.len()-1].to_string();
+String: String = r#""(\\([tnr"]|[0-9a-fA-F]{2}|u[0-9a-fA-F]+)|[^"])+""# => {
+    let string = &<>[1..<>.len()-1];
+
+    let string = string.replace("\\t", "\t");
+    let string = string.replace("\\n", "\n");
+    let string = string.replace("\\r", "\r");
+    let string = string.replace("\\\"", "\"");
+
+    string.to_string()
+};
 Int: i64 = r"-?[0-9]+" =>? i64::from_str(<>).map_err(|_| ParseError::User { error: "Number is too big." });
+Char: char = r#"'.*'|'\\([tnr'])'"# =>? {
+    let ch_str = &<>[1..<>.len()-1];
+
+    let ch_str = ch_str.replace("\\t", "\t");
+    let ch_str = ch_str.replace("\\n", "\n");
+    let ch_str = ch_str.replace("\\r", "\r");
+    let ch_str = ch_str.replace("\\'", "'");
+
+    let mut chs = ch_str.chars();
+
+    if chs.clone().count() != 1 {
+        Err(ParseError::User { error: "Invalid char literal." })
+    } else {
+        Ok(chs.next().unwrap())
+    }
+};

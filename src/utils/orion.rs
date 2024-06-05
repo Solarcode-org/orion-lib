@@ -65,6 +65,12 @@ pub enum Variable {
 
     /// None.
     None(usize),
+
+    /// Array.
+    Array(Vec<Expr>, usize),
+
+    /// Character.
+    Char(char, usize),
 }
 
 pub(crate) fn setup_functions() -> Functions {
@@ -86,14 +92,30 @@ pub(crate) fn setup_variables() -> Variables {
         "__env_version".to_string(),
         Variable::String(env!("CARGO_PKG_VERSION").to_string(), 0),
     );
+    variables.insert(
+        "U8_MAX".to_string(),
+        Variable::Uint8(u8::MAX, 0),
+    );
+    variables.insert(
+        "U16_MAX".to_string(),
+        Variable::Uint16(u16::MAX, 0),
+    );
+    variables.insert(
+        "U32_MAX".to_string(),
+        Variable::Uint32(u32::MAX, 0),
+    );
+    variables.insert(
+        "U64_MAX".to_string(),
+        Variable::Uint64(u64::MAX, 0),
+    );
 
     variables
 }
 
-fn to_string(arg: Option<Expr>) -> String {
-    if let Some(v) = arg {
+fn to_repr(metadata: &Metadata, variables: &mut Variables, arg: Option<Expr>) -> Result<String> {
+    Ok(if let Some(v) = arg {
         match v {
-            Expr::String(s) => s.to_string(),
+            Expr::String(s) => f!("\"{s}\""),
             Expr::Int8(n) => n.to_string(),
             Expr::Int16(n) => n.to_string(),
             Expr::Int32(n) => n.to_string(),
@@ -102,18 +124,58 @@ fn to_string(arg: Option<Expr>) -> String {
             Expr::Uint16(n) => n.to_string(),
             Expr::Uint32(n) => n.to_string(),
             Expr::Uint64(n) => n.to_string(),
+            Expr::Array(ref _array) => to_string(metadata, variables, Some(v))?,
+            Expr::Char(c) => f!("'{c}'"),
             _ => unimplemented!(),
         }
     } else {
         "None".to_string()
-    }
+    })
+}
+
+fn to_string(metadata: &Metadata, variables: &mut Variables, arg: Option<Expr>) -> Result<String> {
+    Ok(if let Some(v) = arg {
+        match v {
+            Expr::String(s) => s.to_string(),
+            Expr::Char(c) => c.to_string(),
+            Expr::Int8(n) => n.to_string(),
+            Expr::Int16(n) => n.to_string(),
+            Expr::Int32(n) => n.to_string(),
+            Expr::Int64(n) => n.to_string(),
+            Expr::Uint8(n) => n.to_string(),
+            Expr::Uint16(n) => n.to_string(),
+            Expr::Uint32(n) => n.to_string(),
+            Expr::Uint64(n) => n.to_string(),
+            Expr::Array(array) => {
+                let mut arr = String::from('[');
+
+                for expr in array {
+                    let res = expr.eval(metadata, variables);
+                    let s = to_repr(metadata, variables, res?)?;
+
+                    arr.push_str(&s);
+                    arr.push_str(", ");
+                }
+
+                arr.pop(); arr.pop();
+
+                arr.push(']');
+
+                arr
+            },
+            Expr::Bool(b) => b.to_string(),
+            _ => unimplemented!(),
+        }
+    } else {
+        "None".to_string()
+    })
 }
 
 fn get_args(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<Vec<Option<Expr>>> {
     let mut args_ = vec![];
 
     for arg in args {
-        args_.push(run(arg, meta, variables)?);
+        args_.push(run(Some(arg), meta, variables)?);
     }
 
     Ok(args_)
@@ -159,7 +221,7 @@ fn say(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<()> {
     let args = get_args(args, meta, variables)?;
 
     for arg in args {
-        print!("{}", to_string(arg));
+        print!("{}", to_string(meta, variables, arg)?);
 
         print!(" ")
     }
@@ -226,7 +288,7 @@ fn join(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<&'stat
     let mut joined = String::new();
 
     for arg in args {
-        joined.push_str(&to_string(arg))
+        joined.push_str(&to_string(meta, variables, arg)?)
     }
 
     Ok(joined.leak())
@@ -249,6 +311,8 @@ fn type_(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<&'sta
             Expr::Uint64(_) => "u64",
             Expr::String(_) => "String",
             Expr::Bool(_) => "bool",
+            Expr::Char(_) => "char",
+            Expr::Array(_) => "array",
             _ => unimplemented!(),
         },
         None => "None",

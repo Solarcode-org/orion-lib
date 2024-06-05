@@ -1,0 +1,16 @@
+# say("kunai"[1])
+
+let array = [1, 2, 3];
+let len = array.len();
+
+say(len);
+
+forx (let i = 1; i < len; i += 1) {
+    say(i, "rara", array[i]);
+};
+
+let chs = "kunai".chars();
+
+for i in chs {
+    say(i)
+}
