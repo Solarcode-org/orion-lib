@@ -23,7 +23,10 @@ pub type Variables = HashMap<String, Variable>;
 pub type Args<'a> = Vec<Expr>;
 
 /// The function type alias.
-pub type Functional<T> = fn(Args, &Metadata, &mut Variables) -> Result<T>;
+pub type Functional<T> = fn(Args, &Metadata, &mut Variables, &mut CustomFunctions) -> Result<T>;
+
+/// The custom function hashmap type alias.
+pub type CustomFunctions = HashMap<String, (Vec<String>, Box<Expr>)>;
 
 #[derive(Debug, Clone, Default)]
 pub struct Metadata {
@@ -76,11 +79,11 @@ pub enum Variable {
 pub(crate) fn setup_functions() -> Functions {
     let mut functions = HashMap::new();
 
-    functions.insert("say".to_string(), Function::Void(say));
-    functions.insert("ask".to_string(), Function::String(ask));
-    functions.insert("quit".to_string(), Function::Void(quit));
-    functions.insert("join".to_string(), Function::String(join));
-    functions.insert("type".to_string(), Function::String(type_));
+    functions.insert("$say".to_string(), Function::Void(say));
+    functions.insert("$ask".to_string(), Function::String(ask));
+    functions.insert("$quit".to_string(), Function::Void(quit));
+    functions.insert("$join".to_string(), Function::String(join));
+    functions.insert("$type".to_string(), Function::String(type_));
 
     functions
 }
@@ -92,27 +95,11 @@ pub(crate) fn setup_variables() -> Variables {
         "__env_version".to_string(),
         Variable::String(env!("CARGO_PKG_VERSION").to_string(), 0),
     );
-    variables.insert(
-        "U8_MAX".to_string(),
-        Variable::Uint8(u8::MAX, 0),
-    );
-    variables.insert(
-        "U16_MAX".to_string(),
-        Variable::Uint16(u16::MAX, 0),
-    );
-    variables.insert(
-        "U32_MAX".to_string(),
-        Variable::Uint32(u32::MAX, 0),
-    );
-    variables.insert(
-        "U64_MAX".to_string(),
-        Variable::Uint64(u64::MAX, 0),
-    );
 
     variables
 }
 
-fn to_repr(metadata: &Metadata, variables: &mut Variables, arg: Option<Expr>) -> Result<String> {
+fn to_repr(metadata: &Metadata, variables: &mut Variables, custom_functions: &mut CustomFunctions, arg: Option<Expr>) -> Result<String> {
     Ok(if let Some(v) = arg {
         match v {
             Expr::String(s) => f!("\"{s}\""),
@@ -124,7 +111,7 @@ fn to_repr(metadata: &Metadata, variables: &mut Variables, arg: Option<Expr>) ->
             Expr::Uint16(n) => n.to_string(),
             Expr::Uint32(n) => n.to_string(),
             Expr::Uint64(n) => n.to_string(),
-            Expr::Array(ref _array) => to_string(metadata, variables, Some(v))?,
+            Expr::Array(ref _array) => to_string(metadata, variables, custom_functions, Some(v))?,
             Expr::Char(c) => f!("'{c}'"),
             _ => unimplemented!(),
         }
@@ -133,7 +120,12 @@ fn to_repr(metadata: &Metadata, variables: &mut Variables, arg: Option<Expr>) ->
     })
 }
 
-fn to_string(metadata: &Metadata, variables: &mut Variables, arg: Option<Expr>) -> Result<String> {
+fn to_string(
+    metadata: &Metadata,
+    variables: &mut Variables,
+    custom_functions: &mut CustomFunctions,
+    arg: Option<Expr>,
+) -> Result<String> {
     Ok(if let Some(v) = arg {
         match v {
             Expr::String(s) => s.to_string(),
@@ -150,8 +142,8 @@ fn to_string(metadata: &Metadata, variables: &mut Variables, arg: Option<Expr>) 
                 let mut arr = String::from('[');
 
                 for expr in array {
-                    let res = expr.eval(metadata, variables);
-                    let s = to_repr(metadata, variables, res?)?;
+                    let res = expr.eval(metadata, variables, custom_functions);
+                    let s = to_repr(metadata, variables, custom_functions, res?)?;
 
                     arr.push_str(&s);
                     arr.push_str(", ");
@@ -171,11 +163,11 @@ fn to_string(metadata: &Metadata, variables: &mut Variables, arg: Option<Expr>) 
     })
 }
 
-fn get_args(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<Vec<Option<Expr>>> {
+fn get_args(args: Args, meta: &Metadata, variables: &mut Variables, custom_functions: &mut CustomFunctions) -> Result<Vec<Option<Expr>>> {
     let mut args_ = vec![];
 
     for arg in args {
-        args_.push(run(Some(arg), meta, variables)?);
+        args_.push(run(Some(arg), meta, variables, custom_functions)?);
     }
 
     Ok(args_)
@@ -187,8 +179,9 @@ fn expect_args<T: AsRef<str>>(
     func: T,
     meta: &Metadata,
     variables: &mut Variables,
+    custom_functions: &mut CustomFunctions
 ) -> Result<Vec<Option<Expr>>> {
-    let args = get_args(args, meta, variables)?;
+    let args = get_args(args, meta, variables, custom_functions)?;
 
     if args.len() < args_no {
         bail!(LineError {
@@ -217,11 +210,11 @@ fn expect_args<T: AsRef<str>>(
     Ok(args)
 }
 
-fn say(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<()> {
-    let args = get_args(args, meta, variables)?;
+fn say(args: Args, meta: &Metadata, variables: &mut Variables, custom_functions: &mut CustomFunctions) -> Result<()> {
+    let args = get_args(args, meta, variables, custom_functions)?;
 
     for arg in args {
-        print!("{}", to_string(meta, variables, arg)?);
+        print!("{}", to_string(meta, variables, custom_functions, arg)?);
 
         print!(" ")
     }
@@ -231,8 +224,8 @@ fn say(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<()> {
     Ok(())
 }
 
-fn ask(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<&'static str> {
-    let args = expect_args(args, 1, "ask", meta, variables)?;
+fn ask(args: Args, meta: &Metadata, variables: &mut Variables, custom_functions: &mut CustomFunctions) -> Result<&'static str> {
+    let args = expect_args(args, 1, "ask", meta, variables, custom_functions)?;
 
     let binding = &args[0];
 
@@ -252,8 +245,8 @@ fn ask(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<&'stati
     Ok(inp.trim().to_string().leak())
 }
 
-fn quit(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<()> {
-    let args = expect_args(args, 1, "quit", meta, variables)?;
+fn quit(args: Args, meta: &Metadata, variables: &mut Variables, custom_functions: &mut CustomFunctions) -> Result<()> {
+    let args = expect_args(args, 1, "quit", meta, variables, custom_functions)?;
 
     let code = match &args[0] {
         Some(code) => match code {
@@ -278,8 +271,8 @@ fn quit(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<()> {
     exit(code)
 }
 
-fn join(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<&'static str> {
-    let args = get_args(args, meta, variables)?;
+fn join(args: Args, meta: &Metadata, variables: &mut Variables, custom_functions: &mut CustomFunctions) -> Result<&'static str> {
+    let args = get_args(args, meta, variables, custom_functions)?;
 
     if args.is_empty() {
         bail!("join: No arguments provided");
@@ -288,14 +281,19 @@ fn join(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<&'stat
     let mut joined = String::new();
 
     for arg in args {
-        joined.push_str(&to_string(meta, variables, arg)?)
+        joined.push_str(&to_string(meta, variables, custom_functions, arg)?)
     }
 
     Ok(joined.leak())
 }
 
-fn type_(args: Args, meta: &Metadata, variables: &mut Variables) -> Result<&'static str> {
-    let args = expect_args(args, 1, "type", meta, variables)?;
+fn type_(
+    args: Args,
+    meta: &Metadata,
+    variables: &mut Variables,
+    custom_functions: &mut CustomFunctions,
+) -> Result<&'static str> {
+    let args = expect_args(args, 1, "type", meta, variables, custom_functions)?;
 
     let arg = &args[0];
 

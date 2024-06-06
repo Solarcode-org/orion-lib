@@ -24,12 +24,13 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::invalid_rust_codeblocks)]
 
+use std::iter::zip;
 use color_eyre::install;
 use lalrpop_util::lalrpop_mod;
 use utils::ast::Expr;
 use utils::orion::{setup_functions, setup_variables, Metadata, Variables};
 
-use crate::utils::orion::{Function, Variable};
+use crate::utils::orion::{CustomFunctions, Function, Variable};
 use prelude::*;
 use crate::utils::ast::{CompCode, OpCode, ReassignCode};
 
@@ -61,7 +62,7 @@ lalrpop_mod!(
 pub fn run_contents<S: ToString>(contents: S) -> Result<()> {
     install()?;
 
-    let contents = contents.to_string().leak();
+    let contents = contents.to_string();
 
     if contents.is_empty() {
         return Ok(());
@@ -74,19 +75,28 @@ pub fn run_contents<S: ToString>(contents: S) -> Result<()> {
 
     let mut variables = setup_variables();
 
+    let mut custom_functions = CustomFunctions::new();
+
+    let full_contents = format!("{}{contents}", include_str!("./lib/std.or"));
+
     let ast: Vec<Option<Expr>> = lrparser::StatementsParser::new()
-        .parse(contents)
+        .parse(full_contents.leak())
         .with_context(|| Errors::GeneralError("Could not parse file".to_string()))?;
 
     for (count, expr) in ast.iter().enumerate() {
         metadata.line = count + 1;
-        run(expr.to_owned(), &metadata, &mut variables)?;
+        run(expr.to_owned(), &metadata, &mut variables, &mut custom_functions)?;
     }
 
     Ok(())
 }
 
-fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<Option<Expr>> {
+fn run(
+    ast: Option<Expr>,
+    meta: &Metadata,
+    variables: &mut Variables,
+    custom_functions: &mut CustomFunctions,
+) -> Result<Option<Expr>> {
     let functions = &meta.functions;
     let line = meta.line;
 
@@ -96,6 +106,39 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
 
     match ast.unwrap() {
         Expr::FuncCall(func, args) => {
+            if custom_functions.contains_key(&func) {
+                let customs = custom_functions.clone();
+                let (f_args, body) = customs.get(&func).unwrap();
+
+                if args.len() != f_args.len() {
+                    bail!(Errors::LineError {
+                        line,
+                        msg: f!("Invalid number of arguments! Expected: {}; Found: {}",
+                            f_args.len(), args.len())
+                    })
+                }
+
+                let mut overrides = vec![];
+                let vars = variables.clone();
+
+                for (arg, f_arg) in zip(args, f_args) {
+                    let arg = arg.eval(meta, variables, custom_functions)?;
+
+                    if variables.contains_key(f_arg) {
+                        overrides.push(vars.get_key_value(f_arg).unwrap());
+                    }
+                    variables.insert(f_arg.to_owned(),
+                                     variable_expr_eq(arg, meta.scope + 1));
+                }
+
+                let res = body.to_owned().eval(meta, variables, custom_functions)?;
+
+                for (key, over) in overrides {
+                    variables.insert(key.to_owned(), over.to_owned());
+                }
+
+                return Ok(res);
+            }
             let func = functions
                 .get(func.as_str())
                 .with_context(|| Errors::LineError {
@@ -105,18 +148,18 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
 
             Ok(match func {
                 Function::Void(f) => {
-                    f(args, meta, variables).with_context(|| f!("Error on line {}", meta.line))?;
+                    f(args, meta, variables, custom_functions).with_context(|| f!("Error on line {}", meta.line))?;
                     return Ok(None);
                 }
                 Function::String(f) => Some(Expr::String(
-                    f(args, meta, variables)
+                    f(args, meta, variables, custom_functions)
                         .with_context(|| f!("Error on line {}", meta.line))?
                         .to_string(),
                 )),
             })
         }
         Expr::Let(name, value) => {
-            let value = value.eval(meta, variables)?;
+            let value = value.eval(meta, variables, custom_functions)?;
 
             variables.insert(
                 name,
@@ -150,8 +193,8 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
             Ok(var)
         }
         Expr::Op(a, opcode, b) => {
-            let a = a.eval(meta, variables)?;
-            let b = b.eval(meta, variables)?;
+            let a = a.eval(meta, variables, custom_functions)?;
+            let b = b.eval(meta, variables, custom_functions)?;
 
             match opcode {
                 OpCode::Add => W(a) + W(b),
@@ -161,8 +204,8 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
             }
         }
         Expr::Compare(a, opcode, b) => {
-            let a = W(a.eval(meta, variables)?);
-            let b = W(b.eval(meta, variables)?);
+            let a = W(a.eval(meta, variables, custom_functions)?);
+            let b = W(b.eval(meta, variables, custom_functions)?);
 
             Ok(Some(match opcode {
                 CompCode::Greater => Expr::Bool(a > b),
@@ -181,7 +224,7 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
             };
 
             for line in lines {
-                value = run(line, &meta, variables)?;
+                value = run(line, &meta, variables, custom_functions)?;
             }
 
             garbage(variables, &(meta.scope - 1));
@@ -189,13 +232,13 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
             Ok(value)
         }
         Expr::If(condition, scope) => {
-            let condition = run(Some(*condition), meta, variables)?;
+            let condition = run(Some(*condition), meta, variables ,custom_functions)?;
 
             let value = if match condition {
                 Some(Expr::Bool(b)) => b,
                 _ => bail!("Invalid type for conditioning."),
             } {
-                run(Some(*scope), meta, variables)?
+                run(Some(*scope), meta, variables, custom_functions)?
             } else {
                 None
             };
@@ -203,29 +246,29 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
             Ok(value)
         }
         Expr::IfElse(condition, if_code, else_code) => {
-            let condition = run(Some(*condition), meta, variables)?;
+            let condition = run(Some(*condition), meta, variables, custom_functions)?;
 
             let value = if match condition {
                 Some(Expr::Bool(b)) => b,
                 _ => bail!("Invalid type for conditioning."),
             } {
-                run(Some(*if_code), meta, variables)?
+                run(Some(*if_code), meta, variables, custom_functions)?
             } else {
-                run(Some(*else_code), meta, variables)?
+                run(Some(*else_code), meta, variables, custom_functions)?
             };
 
             Ok(value)
         }
         Expr::Property(_, _) => todo!(),
         Expr::Method(expr, method, args) => {
-            let expr = expr.eval(meta, variables)?;
+            let expr = expr.eval(meta, variables, custom_functions)?;
             let methodical = match expr {
                 Some(expr) => expr,
                 None => bail!(Errors::LineError {
                     line,
                     msg: "No methods belong to type `None`.".to_string()
                 })
-            }.to_methodical(meta, variables).with_context(|| Errors::GeneralError(
+            }.to_methodical(meta, variables, custom_functions).with_context(|| Errors::GeneralError(
                 f!("Error on line {line}")
             ))?;
 
@@ -237,7 +280,7 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
             Ok(res)
         }
         Expr::For(ident, iterable, code) => {
-            match iterable.eval(meta, variables)? {
+            match iterable.eval(meta, variables, custom_functions)? {
                 Some(Expr::String(_)) => bail!(Errors::LineError {
                     line,
                     msg: "String is not an iterable. Maybe you meant to iterate on its characters? \
@@ -246,11 +289,11 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
                 Some(Expr::Array(array)) => {
                     for expr in array {
                         let variable =
-                            variable_expr_eq(expr.eval(meta, variables)?, meta.scope);
+                            variable_expr_eq(expr.eval(meta, variables, custom_functions)?, meta.scope);
 
                         variables.insert(ident.to_string(), variable);
 
-                        code.clone().eval(meta, variables)?;
+                        code.clone().eval(meta, variables, custom_functions)?;
                     }
 
                     variables.remove(&ident);
@@ -266,32 +309,32 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
             eoi,
             code,
         ) => {
-            initializer.eval(meta, variables)?;
+            initializer.eval(meta, variables, custom_functions)?;
 
             loop {
-                let condition = condition.clone().eval(meta, variables)?;
+                let condition = condition.clone().eval(meta, variables, custom_functions)?;
 
                 match condition {
                     Some(Expr::Bool(b)) => if !b { break }
                     _ => bail!(Errors::LineError { line, msg: "Expected boolean".to_string() })
                 }
 
-                code.clone().eval(meta, variables)?;
+                code.clone().eval(meta, variables, custom_functions)?;
 
-                eoi.clone().eval(meta, variables)?;
+                eoi.clone().eval(meta, variables, custom_functions)?;
             }
 
             Ok(None)
         }
         Expr::Reassign(var, operation, expr) => {
-            let val = expr.clone().eval(meta, variables)?;
+            let val = expr.clone().eval(meta, variables, custom_functions)?;
 
             match variables.get_mut(&var) {
                 Some(v) => {
+                    let (var_expr, scope) = expr_variable_eq(v);
                     *v = match operation {
-                        ReassignCode::Re => variable_expr_eq(val, meta.scope),
+                        ReassignCode::Re => variable_expr_eq(val, scope),
                         ReassignCode::Plus => {
-                            let (var_expr, scope) = expr_variable_eq(v);
                             let res = (W(var_expr) + W(Some(*expr))).with_context(
                                 || Errors::GeneralError(f!("Error on line {line}"))
                             )?;
@@ -299,7 +342,6 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
                             variable_expr_eq(res, scope)
                         }
                         ReassignCode::Minus => {
-                            let (var_expr, scope) = expr_variable_eq(v);
                             let res = (W(var_expr) - W(Some(*expr))).with_context(
                                 || Errors::GeneralError(f!("Error on line {line}"))
                             )?;
@@ -307,7 +349,6 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
                             variable_expr_eq(res, scope)
                         }
                         ReassignCode::Multiply => {
-                            let (var_expr, scope) = expr_variable_eq(v);
                             let res = (W(var_expr) * W(Some(*expr))).with_context(
                                 || Errors::GeneralError(f!("Error on line {line}"))
                             )?;
@@ -315,7 +356,6 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
                             variable_expr_eq(res, scope)
                         }
                         ReassignCode::Divide => {
-                            let (var_expr, scope) = expr_variable_eq(v);
                             let res = (W(var_expr) / W(Some(*expr))).with_context(
                                 || Errors::GeneralError(f!("Error on line {line}"))
                             )?;
@@ -330,7 +370,7 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
             Ok(None)
         }
         Expr::Slice(e, slice) => {
-            let slice = slice.eval(meta, variables)?;
+            let slice = slice.eval(meta, variables, custom_functions)?;
             let slice: usize = match slice {
                 Some(slice) => {
                     match slice {
@@ -354,7 +394,7 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
                 })
             };
 
-            Ok(match e.eval(meta, variables)? {
+            Ok(match e.eval(meta, variables, custom_functions)? {
                 Some(expr) => {
                     match expr {
                         Expr::String(s) => Some(Expr::Char(s.get(slice..slice+1).with_context(
@@ -376,7 +416,7 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
                                 }
                             )?;
 
-                            item.to_owned().eval(meta, variables)?
+                            item.to_owned().eval(meta, variables, custom_functions)?
                         },
                         _ => bail!(Errors::LineError {
                             line,
@@ -389,6 +429,17 @@ fn run(ast: Option<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<
                     msg: "Cannot slice a None object.".to_string()
                 })
             })
+        }
+        Expr::Func(name, args, body) => {
+            if name.starts_with('$') {
+                bail!(Errors::LineError {
+                    line, msg: f!("Cannot create inner functions! `{name}`")
+                })
+            }
+
+            custom_functions.insert(name.to_string(), (args, body));
+
+            Ok(None)
         }
         e => Ok(Some(e)),
     }

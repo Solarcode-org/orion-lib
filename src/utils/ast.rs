@@ -3,7 +3,7 @@
 use std::cmp::Ordering;
 use std::ops::{Add, Div, Mul, Sub};
 use crate::run;
-use crate::utils::orion::{Metadata, Variables};
+use crate::utils::orion::{CustomFunctions, Metadata, Variables};
 use crate::prelude::*;
 use crate::types::arrays::Array;
 use crate::types::bool::Bool;
@@ -101,16 +101,28 @@ pub enum Expr {
     /// Complex For loop.
     ForComplex(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>),
     
-    /// Slice notation,
-    Slice(Box<Expr>, Box<Expr>)
+    /// Slice notation.
+    Slice(Box<Expr>, Box<Expr>),
+
+    /// Function creation.
+    Func(String, Vec<String>, Box<Expr>)
 }
 
 impl Expr {
-    pub fn eval(self, meta: &Metadata, variables: &mut Variables) -> Result<Option<Expr>> {
-        run(Some(self), meta, variables)
+    pub fn eval(
+        self,
+        meta: &Metadata,
+        variables: &mut Variables,
+        custom_functions: &mut CustomFunctions,
+    ) -> Result<Option<Expr>> {
+        run(Some(self), meta, variables, custom_functions)
     }
 
-    pub fn to_methodical(&self, meta: &Metadata, variables: &mut Variables) -> Result<ObjectHolder>
+    pub fn to_methodical(
+        &self,
+        meta: &Metadata,
+        variables: &mut Variables,
+        custom_functions: &mut CustomFunctions) -> Result<ObjectHolder>
     {
         Ok(ObjectHolder(match self {
                 Expr::Int8(_n) => /*Uint8::new(*_n)*/todo!(),
@@ -125,7 +137,9 @@ impl Expr {
                 )?)),
                 Expr::String(s) => Box::new(Str::new(s.to_string())),
                 Expr::Bool(b) => Box::new(Bool::new(*b)),
-                Expr::Array(array) => Box::new(Array::new(array.to_vec(), meta, variables)?),
+                Expr::Array(array) => Box::new(
+                    Array::new(array.to_vec(), meta, variables, custom_functions)?
+                ),
                 _ => unimplemented!()
             }
         ))
@@ -311,31 +325,53 @@ impl PartialOrd<Self> for W<Option<Expr>> {
         let b = &other.0;
 
         match (a, b) {
-            (Some(a), Some(b)) => match (a, b) {
-                (Expr::Int8(i), Expr::Int8(j)) => Some(i.cmp(j)),
-                (Expr::Int16(i), Expr::Int16(j)) => Some(i.cmp(j)),
-                (Expr::Int32(i), Expr::Int32(j)) => Some(i.cmp(j)),
-                (Expr::Int64(i), Expr::Int64(j)) => Some(i.cmp(j)),
-                (Expr::Uint8(i), Expr::Uint8(j)) => Some(i.cmp(j)),
-                (Expr::Uint16(i), Expr::Uint16(j)) => Some(i.cmp(j)),
-                (Expr::Uint32(i), Expr::Uint32(j)) => Some(i.cmp(j)),
-                (Expr::Uint64(i), Expr::Uint64(j)) => Some(i.cmp(j)),
-                (Expr::String(_), Expr::String(_)) => {
-                    eprintln!("\x1b[31Cannot compare strings.\
-                        Maybe you meant to compare their length? \
-                        `len(s1) > len(s2)`\x1b[0m");
-                    None
+            (Some(a), Some(b)) => {
+                let na: Option<i128> = match a {
+                    Expr::Int8(i) => Some((*i).into()),
+                    Expr::Int16(i) => Some((*i).into()),
+                    Expr::Int32(i) => Some((*i).into()),
+                    Expr::Int64(i) => Some((*i).into()),
+                    Expr::Uint8(i) => Some((*i).into()),
+                    Expr::Uint16(i) => Some((*i).into()),
+                    Expr::Uint32(i) => Some((*i).into()),
+                    Expr::Uint64(i) => Some((*i).into()),
+                    _ => None,
+                };
+
+                let nb: Option<i128> = match b {
+                    Expr::Int8(i) => Some((*i).into()),
+                    Expr::Int16(i) => Some((*i).into()),
+                    Expr::Int32(i) => Some((*i).into()),
+                    Expr::Int64(i) => Some((*i).into()),
+                    Expr::Uint8(i) => Some((*i).into()),
+                    Expr::Uint16(i) => Some((*i).into()),
+                    Expr::Uint32(i) => Some((*i).into()),
+                    Expr::Uint64(i) => Some((*i).into()),
+                    _ => None,
+                };
+
+                if let (Some(a), Some(b)) = (na, nb) {
+                    return Some(a.cmp(&b));
                 }
 
-                (Expr::Bool(_), Expr::Bool(_)) => {
-                    eprintln!("\x1b[31mError: Cannot compare booleans. \
+                match (a, b) {
+                    (Expr::String(_), Expr::String(_)) => {
+                        eprintln!("\x1b[31Cannot compare strings.\
+                        Maybe you meant to compare their length? \
+                        `len(s1) > len(s2)`\x1b[0m");
+                        None
+                    }
+
+                    (Expr::Bool(_), Expr::Bool(_)) => {
+                        eprintln!("\x1b[31mError: Cannot compare booleans. \
                         What are you trying to achieve here 🤔?\x1b[0m");
-                    None
+                        None
+                    }
+                    _ => {
+                        eprintln!("\x1b[31mError: Cannot compare between different types.\x1b[0m");
+                        None
+                    },
                 }
-                _ => {
-                    eprintln!("\x1b[31mError: Cannot compare between different types.\x1b[0m");
-                    None
-                },
             },
             (Some(_), None) => {
                 eprintln!("\x1b[31mError: Cannot compare between different types.\x1b[0m");

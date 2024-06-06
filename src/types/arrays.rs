@@ -2,19 +2,24 @@ use crate::types::{Object, ObjectHolder};
 use crate::utils::ast::Expr;
 
 use crate::prelude::*;
-use crate::utils::orion::{Metadata, Variables};
+use crate::utils::orion::{CustomFunctions, Metadata, Variables};
 
 pub struct Array(Vec<ObjectHolder>);
 
 impl Array {
-    pub fn new(array: Vec<Expr>, meta: &Metadata, variables: &mut Variables) -> Result<Self> {
+    pub fn new(
+        array: Vec<Expr>,
+        meta: &Metadata,
+        variables: &mut Variables,
+        custom_functions: &mut CustomFunctions,
+    ) -> Result<Self> {
         let mut self_array = vec![];
 
         for i in array  {
-            self_array.push(match i.eval(meta, variables)? {
+            self_array.push(match i.eval(meta, variables, custom_functions)? {
                 Some(expr) => expr,
                 None => bail!("None cannot be used in arrays.")
-            }.to_methodical(meta, variables)?);
+            }.to_methodical(meta, variables, custom_functions)?);
         }
 
         Ok(Self(self_array))

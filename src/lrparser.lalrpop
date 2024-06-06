@@ -49,8 +49,10 @@ Term: Expr = {
             Ok(Expr::Int16(n))
         } else if let Ok(n) = i32::try_from(<>) {
             Ok(Expr::Int32(n))
+        } else if let Ok(n) = i64::try_from(<>){
+            Ok(Expr::Int64(n))
         } else {
-            Ok(Expr::Int64(<>))
+            Err(ParseError::User { error: "Number is too big." })
         }
     },
     String => Expr::String(<>),
@@ -111,6 +113,8 @@ Expr: Expr = {
     "if" <c:Expr> <s:Scope> => Expr::If(Box::new(c), Box::new(s)),
     "if" <c:Expr> <s:Scope> "else" <e:Scope> => Expr::IfElse(Box::new(c), Box::new(s), Box::new(e)),
     "for" <i:Ident> "in" <e:Expr> <s:Scope> => Expr::For(i, Box::new(e), Box::new(s)),
+    "fn" <i:Ident> "[" <e:Ident*> "]" <s:Scope> => Expr::Func(i, e, Box::new(s)),
+    "fn" <i:Ident> <s:Scope> => Expr::Func(i, vec![], Box::new(s)),
 
     #[precedence(level="3")] #[assoc(side="left")]
     "forx" "(" <i:Expr> ";" <c:Expr> ";" <e:Expr> ")" <s:Scope> => {
@@ -141,7 +145,7 @@ match {
     _ 
 }
 
-Ident: String = r"[A-Za-z_][A-Za-z\d_]*" => <>.to_string();
+Ident: String = r"\$?[A-Za-z_][A-Za-z\d_]*" => <>.to_string();
 String: String = r#""(\\([tnr"]|[0-9a-fA-F]{2}|u[0-9a-fA-F]+)|[^"])+""# => {
     let string = &<>[1..<>.len()-1];
 
@@ -152,7 +156,7 @@ String: String = r#""(\\([tnr"]|[0-9a-fA-F]{2}|u[0-9a-fA-F]+)|[^"])+""# => {
 
     string.to_string()
 };
-Int: i64 = r"-?[0-9]+" =>? i64::from_str(<>).map_err(|_| ParseError::User { error: "Number is too big." });
+Int: i128 = r"-?[0-9]+" =>? i128::from_str(<>).map_err(|_| ParseError::User { error: "Number is too big." });
 Char: char = r#"'.*'|'\\([tnr'])'"# =>? {
     let ch_str = &<>[1..<>.len()-1];
 
