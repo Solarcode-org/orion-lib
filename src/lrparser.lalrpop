@@ -59,7 +59,6 @@ Term: Expr = {
     Char =>? Ok(Expr::Char(<>)),
     "true" => Expr::Bool(true),
     "false" => Expr::Bool(false),
-    "no" => Expr::Scope(vec![]),
     Ident => Expr::Ident(<>),
 
     "(" <Term> ")",
@@ -122,7 +121,11 @@ Expr: Expr = {
     }
 };
 
-Scope: Expr = "{" <Statements> "}" => Expr::Scope(<>);
+Scope: Expr = {
+    "{" <Statements> "}" => Expr::Scope(<>),
+    "no" => Expr::Scope(vec![]),
+    "{" "}" => Expr::Scope(vec![]),
+};
 
 pub Statements: Vec<Option<Expr>> = {
     <a:Expr> <b:(";" Expr)*> ";" => {

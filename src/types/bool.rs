@@ -3,6 +3,7 @@ use crate::utils::ast::Expr;
 
 use crate::prelude::*;
 
+#[allow(dead_code)]
 pub struct Bool(bool);
 
 impl Bool {

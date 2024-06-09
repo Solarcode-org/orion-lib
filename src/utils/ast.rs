@@ -177,25 +177,47 @@ impl Add for W<Option<Expr>> {
     type Output = Result<Option<Expr>>;
 
     fn add(self, rhs: Self) -> Self::Output {
-        match (self.0, rhs.0) {
-            (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => Ok(Some(Expr::Int8(a + b))),
-            (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => Ok(Some(Expr::Int16(a + b))),
-            (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => Ok(Some(Expr::Int32(a + b))),
-            (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => Ok(Some(Expr::Int64(a + b))),
-            (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => Ok(Some(Expr::Uint8(a + b))),
-            (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => Ok(Some(Expr::Uint16(a + b))),
-            (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => Ok(Some(Expr::Uint32(a + b))),
-            (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => Ok(Some(Expr::Uint64(a + b))),
+        let (a, b): (i128, i128) = match (self.0, rhs.0) {
+            (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => (a.into(), b.into()),
+            (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => (a.into(), b.into()),
+            (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => (a.into(), b.into()),
+            (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => (a.into(), b.into()),
             (Some(Expr::String(_)), Some(Expr::String(_))) => bail!("add: Cannot use \
-            strings in operations. Did you mean to concatenate the strings? `join(s1, s2)`"),
+            strings in operations."),
             (Some(Expr::Bool(_)), Some(Expr::Bool(_))) => bail!("add: Cannot use \
-            booleans in operations. Did you mean to use an AND expression? `b1 and b2`"),
+            booleans in operations."),
 
             (None, _) | (_, None) => bail!("add: Cannot use None in arithmetic"),
 
             _ => {
                 bail!("add: Cannot perform arithmetic between two different types.")
             }
+        };
+
+        let sum = a + b;
+
+        if let Ok(n) = u8::try_from(sum) {
+            Ok(Some(Expr::Uint8(n)))
+        } else if let Ok(n) = u16::try_from(sum) {
+            Ok(Some(Expr::Uint16(n)))
+        } else if let Ok(n) = u32::try_from(sum) {
+            Ok(Some(Expr::Uint32(n)))
+        } else if let Ok(n) = u64::try_from(sum) {
+            Ok(Some(Expr::Uint64(n)))
+        } else if let Ok(n) = i8::try_from(sum) {
+            Ok(Some(Expr::Int8(n)))
+        } else if let Ok(n) = i16::try_from(sum) {
+            Ok(Some(Expr::Int16(n)))
+        } else if let Ok(n) = i32::try_from(sum) {
+            Ok(Some(Expr::Int32(n)))
+        } else if let Ok(n) = i64::try_from(sum) {
+            Ok(Some(Expr::Int64(n)))
+        } else {
+            bail!("add: Difference is too big")
         }
     }
 }
@@ -204,15 +226,15 @@ impl Sub for W<Option<Expr>> {
     type Output = Result<Option<Expr>>;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        match (self.0, rhs.0) {
-            (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => Ok(Some(Expr::Int8(a - b))),
-            (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => Ok(Some(Expr::Int16(a - b))),
-            (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => Ok(Some(Expr::Int32(a - b))),
-            (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => Ok(Some(Expr::Int64(a - b))),
-            (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => Ok(Some(Expr::Uint8(a - b))),
-            (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => Ok(Some(Expr::Uint16(a - b))),
-            (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => Ok(Some(Expr::Uint32(a - b))),
-            (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => Ok(Some(Expr::Uint64(a - b))),
+        let (a, b): (i128, i128) = match (self.0, rhs.0) {
+            (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => (a.into(), b.into()),
+            (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => (a.into(), b.into()),
+            (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => (a.into(), b.into()),
+            (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => (a.into(), b.into()),
             (Some(Expr::String(_)), Some(Expr::String(_))) => bail!("subtract: Cannot use \
             strings in operations."),
             (Some(Expr::Bool(_)), Some(Expr::Bool(_))) => bail!("subtract: Cannot use \
@@ -223,6 +245,28 @@ impl Sub for W<Option<Expr>> {
             _ => {
                 bail!("subtract: Cannot perform arithmetic between two different types.")
             }
+        };
+
+        let difference = a - b;
+
+        if let Ok(n) = u8::try_from(difference) {
+            Ok(Some(Expr::Uint8(n)))
+        } else if let Ok(n) = u16::try_from(difference) {
+            Ok(Some(Expr::Uint16(n)))
+        } else if let Ok(n) = u32::try_from(difference) {
+            Ok(Some(Expr::Uint32(n)))
+        } else if let Ok(n) = u64::try_from(difference) {
+            Ok(Some(Expr::Uint64(n)))
+        } else if let Ok(n) = i8::try_from(difference) {
+            Ok(Some(Expr::Int8(n)))
+        } else if let Ok(n) = i16::try_from(difference) {
+            Ok(Some(Expr::Int16(n)))
+        } else if let Ok(n) = i32::try_from(difference) {
+            Ok(Some(Expr::Int32(n)))
+        } else if let Ok(n) = i64::try_from(difference) {
+            Ok(Some(Expr::Int64(n)))
+        } else {
+            bail!("subtract: Difference is too big")
         }
     }
 }
@@ -231,15 +275,15 @@ impl Mul for W<Option<Expr>> {
     type Output = Result<Option<Expr>>;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        match (self.0, rhs.0) {
-            (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => Ok(Some(Expr::Int8(a * b))),
-            (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => Ok(Some(Expr::Int16(a * b))),
-            (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => Ok(Some(Expr::Int32(a * b))),
-            (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => Ok(Some(Expr::Int64(a * b))),
-            (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => Ok(Some(Expr::Uint8(a * b))),
-            (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => Ok(Some(Expr::Uint16(a * b))),
-            (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => Ok(Some(Expr::Uint32(a * b))),
-            (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => Ok(Some(Expr::Uint64(a * b))),
+        let (a, b): (i128, i128) = match (self.0, rhs.0) {
+            (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => (a.into(), b.into()),
+            (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => (a.into(), b.into()),
+            (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => (a.into(), b.into()),
+            (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => (a.into(), b.into()),
             (Some(Expr::String(_)), Some(Expr::String(_))) => bail!("multiply: Cannot use \
             strings in operations."),
             (Some(Expr::Bool(_)), Some(Expr::Bool(_))) => bail!("multiply: Cannot use \
@@ -250,6 +294,28 @@ impl Mul for W<Option<Expr>> {
             _ => {
                 bail!("multiply: Cannot perform arithmetic between two different types.")
             }
+        };
+
+        let product = a * b;
+
+        if let Ok(n) = u8::try_from(product) {
+            Ok(Some(Expr::Uint8(n)))
+        } else if let Ok(n) = u16::try_from(product) {
+            Ok(Some(Expr::Uint16(n)))
+        } else if let Ok(n) = u32::try_from(product) {
+            Ok(Some(Expr::Uint32(n)))
+        } else if let Ok(n) = u64::try_from(product) {
+            Ok(Some(Expr::Uint64(n)))
+        } else if let Ok(n) = i8::try_from(product) {
+            Ok(Some(Expr::Int8(n)))
+        } else if let Ok(n) = i16::try_from(product) {
+            Ok(Some(Expr::Int16(n)))
+        } else if let Ok(n) = i32::try_from(product) {
+            Ok(Some(Expr::Int32(n)))
+        } else if let Ok(n) = i64::try_from(product) {
+            Ok(Some(Expr::Int64(n)))
+        } else {
+            bail!("multiply: Difference is too big")
         }
     }
 }
@@ -258,15 +324,15 @@ impl Div for W<Option<Expr>> {
     type Output = Result<Option<Expr>>;
 
     fn div(self, rhs: Self) -> Self::Output {
-        match (self.0, rhs.0) {
-            (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => Ok(Some(Expr::Int8(a / b))),
-            (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => Ok(Some(Expr::Int16(a / b))),
-            (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => Ok(Some(Expr::Int32(a / b))),
-            (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => Ok(Some(Expr::Int64(a / b))),
-            (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => Ok(Some(Expr::Uint8(a / b))),
-            (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => Ok(Some(Expr::Uint16(a / b))),
-            (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => Ok(Some(Expr::Uint32(a / b))),
-            (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => Ok(Some(Expr::Uint64(a / b))),
+        let (a, b): (i128, i128) = match (self.0, rhs.0) {
+            (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => (a.into(), b.into()),
+            (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => (a.into(), b.into()),
+            (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => (a.into(), b.into()),
+            (Some(Expr::Int64(a)), Some(Expr::Int64(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint8(a)), Some(Expr::Uint8(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint16(a)), Some(Expr::Uint16(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint32(a)), Some(Expr::Uint32(b))) => (a.into(), b.into()),
+            (Some(Expr::Uint64(a)), Some(Expr::Uint64(b))) => (a.into(), b.into()),
             (Some(Expr::String(_)), Some(Expr::String(_))) => bail!("divide: Cannot use \
             strings in operations."),
             (Some(Expr::Bool(_)), Some(Expr::Bool(_))) => bail!("divide: Cannot use \
@@ -277,6 +343,28 @@ impl Div for W<Option<Expr>> {
             _ => {
                 bail!("divide: Cannot perform arithmetic between two different types.")
             }
+        };
+
+        let quotient = a / b;
+
+        if let Ok(n) = u8::try_from(quotient) {
+            Ok(Some(Expr::Uint8(n)))
+        } else if let Ok(n) = u16::try_from(quotient) {
+            Ok(Some(Expr::Uint16(n)))
+        } else if let Ok(n) = u32::try_from(quotient) {
+            Ok(Some(Expr::Uint32(n)))
+        } else if let Ok(n) = u64::try_from(quotient) {
+            Ok(Some(Expr::Uint64(n)))
+        } else if let Ok(n) = i8::try_from(quotient) {
+            Ok(Some(Expr::Int8(n)))
+        } else if let Ok(n) = i16::try_from(quotient) {
+            Ok(Some(Expr::Int16(n)))
+        } else if let Ok(n) = i32::try_from(quotient) {
+            Ok(Some(Expr::Int32(n)))
+        } else if let Ok(n) = i64::try_from(quotient) {
+            Ok(Some(Expr::Int64(n)))
+        } else {
+            bail!("divide: Difference is too big")
         }
     }
 }

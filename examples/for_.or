@@ -1,0 +1,43 @@
+/* let array = [34, 56, 7, 9, 9, 12, 54, 6, 4, 3, 4, 3, 25, 32];
+$say("Array:", array);
+$say();
+
+let len = array.len();
+let rlen = len - 1;
+
+# normal
+for item in array {
+    $say("Normal Item:", item);
+};
+
+$say();
+
+# reverse.
+forx (let idx=rlen; idx >= 0; idx -= 1) {
+    $say("Reverse Item:", array[idx]);
+};
+
+$say();
+
+# skip 2
+forx (let idx=0; idx < len; idx += 2) {
+    $say("Skip Item:", array[idx]);
+}; */
+
+/* let array = [34, 56, 7, 9, 9, 12, 54, 6, 4, 3, 4, 3, 25, 32, 350a];
+let sum = 0;
+
+for item in array {
+    sum += item;
+};
+
+$say(sum); */
+
+$say("Play e4 or face the consequences...");
+$say("Play e4 or face the consequences...");
+$say("Play e4 or face the consequences...");
+$say("Play e4 or face the consequences...");
+$say("Play e4 or face the consequences...");
+
+let move = ask("Play a move :D >> ");
+$say("Muhfsuafhduisfhds", move);

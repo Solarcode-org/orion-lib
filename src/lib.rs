@@ -26,7 +26,7 @@
 
 use std::iter::zip;
 use color_eyre::install;
-use lalrpop_util::lalrpop_mod;
+use lalrpop_util::{lalrpop_mod, ParseError};
 use utils::ast::Expr;
 use utils::orion::{setup_functions, setup_variables, Metadata, Variables};
 
@@ -79,12 +79,52 @@ pub fn run_contents<S: ToString>(contents: S) -> Result<()> {
 
     let full_contents = format!("{}{contents}", include_str!("./lib/std.or"));
 
-    let ast: Vec<Option<Expr>> = lrparser::StatementsParser::new()
-        .parse(full_contents.leak())
-        .with_context(|| Errors::GeneralError("Could not parse file".to_string()))?;
+    let result = lrparser::StatementsParser::new()
+        .parse(full_contents.leak());
+
+    let result = if result.is_err() {
+        Err(match result.err().unwrap() {
+            ParseError::InvalidToken { location } => {
+                let loc = utils::location::location(location, contents);
+                ParseError::InvalidToken { location: loc }
+            }
+            ParseError::UnrecognizedEof { location, expected } => {
+                let loc = utils::location::location(location, contents);
+                ParseError::UnrecognizedEof { location: loc, expected }
+            }
+            ParseError::UnrecognizedToken { token, expected } => {
+                let (loc1, token, loc2) = token;
+                let loc1 = utils::location::location(loc1, &contents);
+                let loc2 = utils::location::location(loc2, contents);
+
+                ParseError::UnrecognizedToken { token: (loc1, token, loc2), expected }
+            }
+            ParseError::ExtraToken { token } => {
+                let (loc1, token, loc2) = token;
+                let loc1 = utils::location::location(loc1, &contents);
+                let loc2 = utils::location::location(loc2, contents);
+
+                ParseError::ExtraToken { token: (loc1, token, loc2) }
+            }
+            ParseError::User { error } => ParseError::User { error }
+        })
+    } else {
+        result.map_err(|_| ParseError::User { error: "impossible" })
+    };
+
+    let ast = result.unwrap_or_else(|e| {
+        #[cfg(debug_assertions)] {
+            panic!("\x1b[31m{e}\x1b[0m");
+        }
+        #[cfg(not(debug_assertions))] {
+            eprintln!("\x1b[31m{e}\x1b[0m");
+            std::process::exit(1)
+        }
+    });
 
     for (count, expr) in ast.iter().enumerate() {
         metadata.line = count + 1;
+
         run(expr.to_owned(), &metadata, &mut variables, &mut custom_functions)?;
     }
 
@@ -312,9 +352,9 @@ fn run(
             initializer.eval(meta, variables, custom_functions)?;
 
             loop {
-                let condition = condition.clone().eval(meta, variables, custom_functions)?;
+                let condition_ = condition.clone().eval(meta, variables, custom_functions)?;
 
-                match condition {
+                match condition_ {
                     Some(Expr::Bool(b)) => if !b { break }
                     _ => bail!(Errors::LineError { line, msg: "Expected boolean".to_string() })
                 }
@@ -335,28 +375,28 @@ fn run(
                     *v = match operation {
                         ReassignCode::Re => variable_expr_eq(val, scope),
                         ReassignCode::Plus => {
-                            let res = (W(var_expr) + W(Some(*expr))).with_context(
+                            let res = (W(var_expr) + W(val)).with_context(
                                 || Errors::GeneralError(f!("Error on line {line}"))
                             )?;
 
                             variable_expr_eq(res, scope)
                         }
                         ReassignCode::Minus => {
-                            let res = (W(var_expr) - W(Some(*expr))).with_context(
+                            let res = (W(var_expr) - W(val)).with_context(
                                 || Errors::GeneralError(f!("Error on line {line}"))
                             )?;
 
                             variable_expr_eq(res, scope)
                         }
                         ReassignCode::Multiply => {
-                            let res = (W(var_expr) * W(Some(*expr))).with_context(
+                            let res = (W(var_expr) * W(val)).with_context(
                                 || Errors::GeneralError(f!("Error on line {line}"))
                             )?;
 
                             variable_expr_eq(res, scope)
                         }
                         ReassignCode::Divide => {
-                            let res = (W(var_expr) / W(Some(*expr))).with_context(
+                            let res = (W(var_expr) / W(val)).with_context(
                                 || Errors::GeneralError(f!("Error on line {line}"))
                             )?;
 
