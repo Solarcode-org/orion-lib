@@ -1,12 +1,13 @@
 /// The LR(1) Parser for Orion.
 
-use crate::utils::ast::{Expr, OpCode, CompCode, ReassignCode};
+use crate::utils::ast::{Expr, OpCode, CompCode, ReassignCode, Type};
 use std::str::FromStr;
 use lalrpop_util::ParseError;
 
-grammar;
+grammar(braces: bool);
 
 Exprs = Comma<Expr>;
+Idents = Comma<Ident>;
 
 Comma<T>: Vec<T> = {
     <mut v:(<T> ",")*> <e:T?> => match e { // (2)
@@ -66,7 +67,7 @@ Term: Expr = {
 
 Comparison: Expr = {
     <e:Factor> <o:CompOp> <f:Factor> => Expr::Compare(Box::new(e), o, Box::new(f)),
-}
+};
 
 CompOp: CompCode = {
     ">" => CompCode::Greater,
@@ -75,11 +76,11 @@ CompOp: CompCode = {
     "!=" => CompCode::NotEquals,
     ">=" => CompCode::GreaterEquals,
     "<=" => CompCode::LesserEquals,
-}
+};
 
 Reassign: Expr = {
     <i:Ident> <o:ReassignOp> <f:Factor> => Expr::Reassign(i, o, Box::new(f))
-}
+};
 
 ReassignOp: ReassignCode = {
     "=" => ReassignCode::Re,
@@ -87,7 +88,23 @@ ReassignOp: ReassignCode = {
     "-=" => ReassignCode::Minus,
     "*=" => ReassignCode::Multiply,
     "/=" => ReassignCode::Divide,
-}
+};
+
+Type: Type = {
+    "str" => Type::String,
+    "u8" => Type::Uint8,
+    "u16" => Type::Uint16,
+    "u32" => Type::Uint32,
+    "u64" => Type::Uint64,
+    "i8" => Type::Int8,
+    "i16" => Type::Int16,
+    "i32" => Type::Int32,
+    "i64" => Type::Int64,
+    "int" => Type::DynInt,
+    "bool" => Type::Bool,
+    "char" => Type::Char,
+    "[" <t:Type?> "]" => Type::Array(Box::new(t)),
+};
 
 Expr: Expr = {
     #[precedence(level="0")]
@@ -106,13 +123,14 @@ Expr: Expr = {
 
     #[precedence(level="1")] #[assoc(side="left")]
     "let" <i:Ident> "=" <e:Expr> => Expr::Let(i, Box::new(e)),
+    ":" <t:Type> <i:Ident> "=" <e:Expr> => Expr::TypeLet(t, i, Box::new(e)),
     Reassign,
 
     #[precedence(level="2")] #[assoc(side="left")]
     "if" <c:Expr> <s:Scope> => Expr::If(Box::new(c), Box::new(s)),
     "if" <c:Expr> <s:Scope> "else" <e:Scope> => Expr::IfElse(Box::new(c), Box::new(s), Box::new(e)),
     "for" <i:Ident> "in" <e:Expr> <s:Scope> => Expr::For(i, Box::new(e), Box::new(s)),
-    "fn" <i:Ident> "[" <e:Ident*> "]" <s:Scope> => Expr::Func(i, e, Box::new(s)),
+    "fn" <i:Ident> "[" <e:Idents> "]" <s:Scope> => Expr::Func(i, e, Box::new(s)),
     "fn" <i:Ident> <s:Scope> => Expr::Func(i, vec![], Box::new(s)),
 
     #[precedence(level="3")] #[assoc(side="left")]
@@ -122,9 +140,21 @@ Expr: Expr = {
 };
 
 Scope: Expr = {
-    "{" <Statements> "}" => Expr::Scope(<>),
-    "no" => Expr::Scope(vec![]),
-    "{" "}" => Expr::Scope(vec![]),
+    "{" <Statements> "}" =>? {
+        if braces {
+            Ok(Expr::Scope(<>))
+        } else {
+            Err(ParseError::User { error: "Cannot use scopes with braces in normal mode." })
+        }
+    },
+    "do" <Statements> "end" =>? {
+        if !braces {
+            Ok(Expr::Scope(<>))
+        } else {
+            Err(ParseError::User { error: "Cannot use scopes with do/end in braces mode." })
+        }
+    },
+    "ignore" => Expr::Scope(vec![]),
 };
 
 pub Statements: Vec<Option<Expr>> = {

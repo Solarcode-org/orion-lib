@@ -8,17 +8,16 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             run_contents(
                 r#"
-        say("Hello!");
+        say$("Hello!");
 
-        say("Hi,", join("somename", "!"));
+        say$("Hi,", join("somename", "!"));
         
-        if true {
-            say("Possible");
-        } else {
-            say("Impossible");
-        };
-        "#,
-            )
+        if true do
+            say("Possible")
+        end else
+            say("Impossible")
+        end
+        "#, true)
         })
     });
 }

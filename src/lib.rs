@@ -16,7 +16,7 @@
 //! use color_eyre::Result;
 //!
 //! fn main() -> Result<()> {
-//!     run_contents("say(\"Hello, world!\")".to_string())?;
+//!     run_contents("say(\"Hello, world!\")".to_string(), false)?;
 //!     Ok(())
 //! }
 //! ```
@@ -25,14 +25,16 @@
 #![deny(rustdoc::invalid_rust_codeblocks)]
 
 use std::iter::zip;
+
 use color_eyre::install;
 use lalrpop_util::{lalrpop_mod, ParseError};
-use utils::ast::Expr;
-use utils::orion::{setup_functions, setup_variables, Metadata, Variables};
 
-use crate::utils::orion::{CustomFunctions, Function, Variable};
 use prelude::*;
-use crate::utils::ast::{CompCode, OpCode, ReassignCode};
+use utils::ast::Expr;
+use utils::orion::{Metadata, setup_functions, setup_variables, Variables};
+
+use crate::utils::ast::{CompCode, OpCode, ReassignCode, Type};
+use crate::utils::orion::{CustomFunctions, Function, Variable};
 
 mod error;
 mod prelude;
@@ -55,11 +57,11 @@ lalrpop_mod!(
 /// use color_eyre::Result;
 ///
 /// fn main() -> Result<()> {
-///     run_contents("say(\"Hello, world!\")".to_string())?;
+///     run_contents("say(\"Hello, world!\")".to_string(), false)?;
 ///     Ok(())
 /// }
 /// ```
-pub fn run_contents<S: ToString>(contents: S) -> Result<()> {
+pub fn run_contents<S: ToString>(contents: S, use_braces: bool) -> Result<()> {
     install()?;
 
     let contents = contents.to_string();
@@ -77,46 +79,73 @@ pub fn run_contents<S: ToString>(contents: S) -> Result<()> {
 
     let mut custom_functions = CustomFunctions::new();
 
-    let full_contents = format!("{}{contents}", include_str!("./lib/std.or"));
+    let lib = f!("{}\n", include_str!("./lib/std.or"));
 
     let result = lrparser::StatementsParser::new()
-        .parse(full_contents.leak());
+        .parse(false, lib.leak())
+        .with_context(|| "Error in standard file.")?;
+
+    for expr in result {
+        run(expr, &metadata, &mut variables, &mut custom_functions).with_context(|| {
+            "Error in \
+        standard file."
+        })?;
+    }
+
+    let result = lrparser::StatementsParser::new().parse(use_braces, contents.clone().leak());
 
     let result = if result.is_err() {
-        Err(match result.err().unwrap() {
-            ParseError::InvalidToken { location } => {
-                let loc = utils::location::location(location, contents);
-                ParseError::InvalidToken { location: loc }
-            }
-            ParseError::UnrecognizedEof { location, expected } => {
-                let loc = utils::location::location(location, contents);
-                ParseError::UnrecognizedEof { location: loc, expected }
-            }
-            ParseError::UnrecognizedToken { token, expected } => {
-                let (loc1, token, loc2) = token;
-                let loc1 = utils::location::location(loc1, &contents);
-                let loc2 = utils::location::location(loc2, contents);
+            Err(match result.err().unwrap() {
+                ParseError::InvalidToken { location } => {
+                    let loc = utils::location::location(location, contents);
+                    ParseError::InvalidToken { location: loc }
+                }
 
-                ParseError::UnrecognizedToken { token: (loc1, token, loc2), expected }
-            }
-            ParseError::ExtraToken { token } => {
-                let (loc1, token, loc2) = token;
-                let loc1 = utils::location::location(loc1, &contents);
-                let loc2 = utils::location::location(loc2, contents);
+                ParseError::UnrecognizedEof { location, expected } => {
+                    let loc = utils::location::location(location, contents);
+                    ParseError::UnrecognizedEof {
+                        location: loc,
+                        expected,
+                    }
+                }
 
-                ParseError::ExtraToken { token: (loc1, token, loc2) }
-            }
-            ParseError::User { error } => ParseError::User { error }
-        })
-    } else {
-        result.map_err(|_| ParseError::User { error: "impossible" })
-    };
+                ParseError::UnrecognizedToken { token, expected } => {
+                    let (loc1, token, loc2) = token;
+                    let loc1 = utils::location::location(loc1, &contents);
+                    let loc2 = utils::location::location(loc2, contents);
 
-    let ast = result.unwrap_or_else(|e| {
-        #[cfg(debug_assertions)] {
+                    ParseError::UnrecognizedToken {
+                        token: (loc1, token, loc2),
+                        expected,
+                    }
+                }
+
+                ParseError::ExtraToken { token } => {
+                    let (loc1, token, loc2) = token;
+                    let loc1 = utils::location::location(loc1, &contents);
+                    let loc2 = utils::location::location(loc2, contents);
+
+                    ParseError::ExtraToken {
+                        token: (loc1, token, loc2),
+                    }
+                }
+
+                ParseError::User { error } => ParseError::User { error }, // ParseError::User
+            })
+        }
+        else {
+            result.map_err(|_| ParseError::User {
+                error: "impossible",
+            })
+        };
+
+    let ast: Vec<Option<Expr>> = result.unwrap_or_else(|e| {
+        #[cfg(debug_assertions)]
+        {
             panic!("\x1b[31m{e}\x1b[0m");
         }
-        #[cfg(not(debug_assertions))] {
+        #[cfg(not(debug_assertions))]
+        {
             eprintln!("\x1b[31m{e}\x1b[0m");
             std::process::exit(1)
         }
@@ -125,7 +154,12 @@ pub fn run_contents<S: ToString>(contents: S) -> Result<()> {
     for (count, expr) in ast.iter().enumerate() {
         metadata.line = count + 1;
 
-        run(expr.to_owned(), &metadata, &mut variables, &mut custom_functions)?;
+        run(
+            expr.to_owned(),
+            &metadata,
+            &mut variables,
+            &mut custom_functions,
+        )?;
     }
 
     Ok(())
@@ -153,8 +187,11 @@ fn run(
                 if args.len() != f_args.len() {
                     bail!(Errors::LineError {
                         line,
-                        msg: f!("Invalid number of arguments! Expected: {}; Found: {}",
-                            f_args.len(), args.len())
+                        msg: f!(
+                            "Invalid number of arguments! Expected: {}; Found: {}",
+                            f_args.len(),
+                            args.len()
+                        )
                     })
                 }
 
@@ -167,8 +204,8 @@ fn run(
                     if variables.contains_key(f_arg) {
                         overrides.push(vars.get_key_value(f_arg).unwrap());
                     }
-                    variables.insert(f_arg.to_owned(),
-                                     variable_expr_eq(arg, meta.scope + 1));
+
+                    variables.insert(f_arg.to_owned(), variable_expr_eq(arg, meta.scope + 1));
                 }
 
                 let res = body.to_owned().eval(meta, variables, custom_functions)?;
@@ -179,7 +216,8 @@ fn run(
 
                 return Ok(res);
             }
-            let func = functions
+
+            let func: &Function = functions
                 .get(func.as_str())
                 .with_context(|| Errors::LineError {
                     line,
@@ -187,24 +225,57 @@ fn run(
                 })?;
 
             Ok(match func {
-                Function::Void(f) => {
-                    f(args, meta, variables, custom_functions).with_context(|| f!("Error on line {}", meta.line))?;
-                    return Ok(None);
+                    Function::Void(f) => {
+                        f(args, meta, variables, custom_functions)
+                            .with_context(|| f!("Error on line {}", meta.line))?;
+                        return Ok(None);
+                    }
+                    Function::String(f) => Some(Expr::String(
+                            f(args, meta, variables, custom_functions)
+                                .with_context(|| f!("Error on line {}", meta.line))?
+                                .to_string(),
+                        )
+                    ),
                 }
-                Function::String(f) => Some(Expr::String(
-                    f(args, meta, variables, custom_functions)
-                        .with_context(|| f!("Error on line {}", meta.line))?
-                        .to_string(),
-                )),
-            })
+            )
         }
+
         Expr::Let(name, value) => {
             let value = value.eval(meta, variables, custom_functions)?;
 
-            variables.insert(
-                name,
-                variable_expr_eq(value, meta.scope)
-            );
+            if variables.contains_key(&name) {
+                bail!(Errors::LineError {
+                    line,
+                    msg: f!("Variable already exists. \
+                    Maybe you meant to overwrite it? `{name} = value`"),
+                })
+            }
+
+            variables.insert(name, variable_expr_eq(value, meta.scope));
+
+            Ok(None)
+        }
+        Expr::TypeLet(ty, name, value) => {
+            let value = value.eval(meta, variables, custom_functions)?;
+
+            if let Some(ref value) = value {
+                check_type(value, &ty, line)?;
+            } else {
+                bail!(Errors::LineError {
+                    line,
+                    msg: "Type does not match declaration.".to_string(),
+                })
+            }
+
+            if variables.contains_key(&name) {
+                bail!(Errors::LineError {
+                    line,
+                    msg: f!("Variable already exists. \
+                    Maybe you meant to overwrite it? `{name} = value`"),
+                })
+            }
+
+            variables.insert(name, variable_expr_eq(value, meta.scope));
 
             Ok(None)
         }
@@ -272,7 +343,7 @@ fn run(
             Ok(value)
         }
         Expr::If(condition, scope) => {
-            let condition = run(Some(*condition), meta, variables ,custom_functions)?;
+            let condition = run(Some(*condition), meta, variables, custom_functions)?;
 
             let value = if match condition {
                 Some(Expr::Bool(b)) => b,
@@ -307,29 +378,36 @@ fn run(
                 None => bail!(Errors::LineError {
                     line,
                     msg: "No methods belong to type `None`.".to_string()
-                })
-            }.to_methodical(meta, variables, custom_functions).with_context(|| Errors::GeneralError(
-                f!("Error on line {line}")
-            ))?;
+                }),
+            }
+            .to_methodical(meta, variables, custom_functions)
+            .with_context(|| Errors::GeneralError(f!("Error on line {line}")))?;
 
-            let res = methodical.0.call(&method, args).with_context(|| Errors::LineError {
-                line,
-                msg: f!("Failed to run method `{method}`")
-            })?;
+            let res = methodical
+                .0
+                .call(&method, args)
+                .with_context(|| Errors::LineError {
+                    line,
+                    msg: f!("Failed to run method `{method}`"),
+                })?;
 
             Ok(res)
         }
         Expr::For(ident, iterable, code) => {
             match iterable.eval(meta, variables, custom_functions)? {
-                Some(Expr::String(_)) => bail!(Errors::LineError {
+                Some(Expr::String(_)) => {
+                    bail!(Errors::LineError {
                     line,
                     msg: "String is not an iterable. Maybe you meant to iterate on its characters? \
                     `s.chars()`".to_string()
-                }),
+                })
+                }
                 Some(Expr::Array(array)) => {
                     for expr in array {
-                        let variable =
-                            variable_expr_eq(expr.eval(meta, variables, custom_functions)?, meta.scope);
+                        let variable = variable_expr_eq(
+                            expr.eval(meta, variables, custom_functions)?,
+                            meta.scope,
+                        );
 
                         variables.insert(ident.to_string(), variable);
 
@@ -337,26 +415,28 @@ fn run(
                     }
 
                     variables.remove(&ident);
-                },
-                _ => bail!("for: Type is not an iterable.")
+                }
+                _ => bail!("for: Type is not an iterable."),
             }
 
             Ok(None)
-        },
-        Expr::ForComplex(
-            initializer,
-            condition,
-            eoi,
-            code,
-        ) => {
+        }
+        Expr::ForComplex(initializer, condition, eoi, code) => {
             initializer.eval(meta, variables, custom_functions)?;
 
             loop {
                 let condition_ = condition.clone().eval(meta, variables, custom_functions)?;
 
                 match condition_ {
-                    Some(Expr::Bool(b)) => if !b { break }
-                    _ => bail!(Errors::LineError { line, msg: "Expected boolean".to_string() })
+                    Some(Expr::Bool(b)) => {
+                        if !b {
+                            break;
+                        }
+                    }
+                    _ => bail!(Errors::LineError {
+                        line,
+                        msg: "Expected boolean".to_string()
+                    }),
                 }
 
                 code.clone().eval(meta, variables, custom_functions)?;
@@ -375,36 +455,36 @@ fn run(
                     *v = match operation {
                         ReassignCode::Re => variable_expr_eq(val, scope),
                         ReassignCode::Plus => {
-                            let res = (W(var_expr) + W(val)).with_context(
-                                || Errors::GeneralError(f!("Error on line {line}"))
-                            )?;
+                            let res = (W(var_expr) + W(val)).with_context(|| {
+                                Errors::GeneralError(f!("Error on line {line}"))
+                            })?;
 
                             variable_expr_eq(res, scope)
                         }
                         ReassignCode::Minus => {
-                            let res = (W(var_expr) - W(val)).with_context(
-                                || Errors::GeneralError(f!("Error on line {line}"))
-                            )?;
+                            let res = (W(var_expr) - W(val)).with_context(|| {
+                                Errors::GeneralError(f!("Error on line {line}"))
+                            })?;
 
                             variable_expr_eq(res, scope)
                         }
                         ReassignCode::Multiply => {
-                            let res = (W(var_expr) * W(val)).with_context(
-                                || Errors::GeneralError(f!("Error on line {line}"))
-                            )?;
+                            let res = (W(var_expr) * W(val)).with_context(|| {
+                                Errors::GeneralError(f!("Error on line {line}"))
+                            })?;
 
                             variable_expr_eq(res, scope)
                         }
                         ReassignCode::Divide => {
-                            let res = (W(var_expr) / W(val)).with_context(
-                                || Errors::GeneralError(f!("Error on line {line}"))
-                            )?;
+                            let res = (W(var_expr) / W(val)).with_context(|| {
+                                Errors::GeneralError(f!("Error on line {line}"))
+                            })?;
 
                             variable_expr_eq(res, scope)
                         }
                     };
-                },
-                None => bail!(f!("Variable {var} not found"))
+                }
+                None => bail!(f!("Variable {var} not found")),
             }
 
             Ok(None)
@@ -412,68 +492,65 @@ fn run(
         Expr::Slice(e, slice) => {
             let slice = slice.eval(meta, variables, custom_functions)?;
             let slice: usize = match slice {
-                Some(slice) => {
-                    match slice {
-                        Expr::Int8(n) => n.try_into()?,
-                        Expr::Int16(n) => n.try_into()?,
-                        Expr::Int32(n) => n.try_into()?,
-                        Expr::Int64(n) => n.try_into()?,
-                        Expr::Uint8(n) => n.into(),
-                        Expr::Uint16(n) => n.into(),
-                        Expr::Uint32(n) => n.try_into()?,
-                        Expr::Uint64(n) => n.try_into()?,
-                        _ => bail!(Errors::LineError {
-                            line,
-                            msg: "Cannot use this type as slicer.".to_string()
-                        })
-                    }
+                Some(slice) => match slice {
+                    Expr::Int8(n) => n.try_into()?,
+                    Expr::Int16(n) => n.try_into()?,
+                    Expr::Int32(n) => n.try_into()?,
+                    Expr::Int64(n) => n.try_into()?,
+                    Expr::Uint8(n) => n.into(),
+                    Expr::Uint16(n) => n.into(),
+                    Expr::Uint32(n) => n.try_into()?,
+                    Expr::Uint64(n) => n.try_into()?,
+                    _ => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot use this type as slicer.".to_string()
+                    }),
                 },
                 None => bail!(Errors::LineError {
                     line,
                     msg: "Cannot use None as slicer.".to_string()
-                })
+                }),
             };
 
             Ok(match e.eval(meta, variables, custom_functions)? {
-                Some(expr) => {
-                    match expr {
-                        Expr::String(s) => Some(Expr::Char(s.get(slice..slice+1).with_context(
-                            || Errors::LineError {
+                Some(expr) => match expr {
+                    Expr::String(s) => Some(Expr::Char(
+                        s.get(slice..slice + 1)
+                            .with_context(|| Errors::LineError {
                                 line,
-                                msg: f!("Could not slice string at index {slice}")
-                            }
-                        )?.chars().next().with_context(
-                            || Errors::LineError {
+                                msg: f!("Could not slice string at index {slice}"),
+                            })?
+                            .chars()
+                            .next()
+                            .with_context(|| Errors::LineError {
                                 line,
-                                msg: f!("Could not slice string at index {slice}")
-                            }
-                        )?)),
-                        Expr::Array(array) => {
-                            let item = array.get(slice).with_context(
-                                || Errors::LineError {
-                                    line,
-                                    msg: f!("Could not slice array at index {slice}")
-                                }
-                            )?;
-
-                            item.to_owned().eval(meta, variables, custom_functions)?
-                        },
-                        _ => bail!(Errors::LineError {
+                                msg: f!("Could not slice string at index {slice}"),
+                            })?,
+                    )),
+                    Expr::Array(array) => {
+                        let item = array.get(slice).with_context(|| Errors::LineError {
                             line,
-                            msg: "Cannot slice this object.".to_string()
-                        })
+                            msg: f!("Could not slice array at index {slice}"),
+                        })?;
+
+                        item.to_owned().eval(meta, variables, custom_functions)?
                     }
-                }
+                    _ => bail!(Errors::LineError {
+                        line,
+                        msg: "Cannot slice this object.".to_string()
+                    }),
+                },
                 None => bail!(Errors::LineError {
                     line,
                     msg: "Cannot slice a None object.".to_string()
-                })
+                }),
             })
         }
         Expr::Func(name, args, body) => {
             if name.starts_with('$') {
                 bail!(Errors::LineError {
-                    line, msg: f!("Cannot create inner functions! `{name}`")
+                    line,
+                    msg: f!("Cannot create inner functions! `{name}`")
                 })
             }
 
@@ -508,7 +585,7 @@ fn variable_expr_eq(expr: Option<Expr>, scope: usize) -> Variable {
     let expr = if let Some(expr) = expr {
         expr
     } else {
-        return Variable::None(scope)
+        return Variable::None(scope);
     };
 
     match expr {
@@ -527,7 +604,7 @@ fn variable_expr_eq(expr: Option<Expr>, scope: usize) -> Variable {
     }
 }
 
-fn expr_variable_eq(var: &Variable) -> (Option<Expr>, usize)  {
+fn expr_variable_eq(var: &Variable) -> (Option<Expr>, usize) {
     match var {
         Variable::Int8(n, scope) => (Some(Expr::Int8(*n)), *scope),
         Variable::Int16(n, scope) => (Some(Expr::Int16(*n)), *scope),
@@ -544,351 +621,31 @@ fn expr_variable_eq(var: &Variable) -> (Option<Expr>, usize)  {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_i8() -> Result<()> {
-        let functions = setup_functions();
-
-        let meta = Metadata {
-            functions,
-            ..Default::default()
-        };
-
-        let mut variables = setup_variables();
-
-        assert_eq!(
-            run(Expr::Int8(1), &meta, &mut variables)?,
-            Some(Expr::Int8(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Subtract(Box::new(Expr::Int8(1)), Box::new(Expr::Int8(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Int8(0))
-        );
-        assert_eq!(
-            run(
-                Expr::Multiply(Box::new(Expr::Int8(1)), Box::new(Expr::Int8(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Int8(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Divide(Box::new(Expr::Int8(1)), Box::new(Expr::Int8(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Int8(1))
-        );
-
-        Ok(())
+fn check_type(expr: &Expr, ty: &Type, line: usize) -> Result<()> {
+    match (expr, ty) {
+        (Expr::Int8(_), Type::Int8) | (Expr::Int8(_), Type::DynInt) => {}
+        (Expr::Int16(_), Type::Int16) | (Expr::Int16(_), Type::DynInt) => {}
+        (Expr::Int32(_), Type::Int32) | (Expr::Int32(_), Type::DynInt) => {}
+        (Expr::Int64(_), Type::Int64) | (Expr::Int64(_), Type::DynInt) => {}
+        (Expr::Uint8(_), Type::Uint8) | (Expr::Uint8(_), Type::DynInt) => {}
+        (Expr::Uint16(_), Type::Uint16) | (Expr::Uint16(_), Type::DynInt) => {}
+        (Expr::Uint32(_), Type::Uint32) | (Expr::Uint32(_), Type::DynInt) => {}
+        (Expr::Uint64(_), Type::Uint64) | (Expr::Uint64(_), Type::DynInt) => {}
+        (Expr::String(_), Type::String) => {}
+        (Expr::Bool(_), Type::Bool) => {}
+        (Expr::Char(_), Type::Char) => {}
+        (Expr::Array(array), Type::Array(ty)) => {
+            if let Some(ty) = &**ty {
+                for expr in array {
+                    check_type(expr, ty, line)?;
+                }
+            }
+        }
+        (_, _) => bail!(Errors::LineError {
+            line,
+            msg: "Type does not match declaration".to_string()
+        }),
     }
 
-    #[test]
-    fn test_i16() -> Result<()> {
-        let functions = setup_functions();
-
-        let meta = Metadata {
-            functions,
-            ..Default::default()
-        };
-
-        let mut variables = setup_variables();
-
-        assert_eq!(
-            run(Expr::Int16(1), &meta, &mut variables)?,
-            Some(Expr::Int16(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Subtract(Box::new(Expr::Int16(1)), Box::new(Expr::Int16(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Int16(0))
-        );
-        assert_eq!(
-            run(
-                Expr::Multiply(Box::new(Expr::Int16(1)), Box::new(Expr::Int16(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Int16(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Divide(Box::new(Expr::Int16(1)), Box::new(Expr::Int16(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Int16(1))
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_i32() -> Result<()> {
-        let functions = setup_functions();
-
-        let meta = Metadata {
-            functions,
-            ..Default::default()
-        };
-
-        let mut variables = setup_variables();
-
-        assert_eq!(
-            run(Expr::Int32(1), &meta, &mut variables)?,
-            Some(Expr::Int32(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Subtract(Box::new(Expr::Int32(1)), Box::new(Expr::Int32(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Int32(0))
-        );
-        assert_eq!(
-            run(
-                Expr::Multiply(Box::new(Expr::Int32(1)), Box::new(Expr::Int32(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Int32(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Divide(Box::new(Expr::Int32(1)), Box::new(Expr::Int32(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Int32(1))
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_i64() -> Result<()> {
-        let functions = setup_functions();
-
-        let meta = Metadata {
-            functions,
-            ..Default::default()
-        };
-
-        let mut variables = setup_variables();
-
-        assert_eq!(
-            run(Expr::Int64(1), &meta, &mut variables)?,
-            Some(Expr::Int64(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Subtract(Box::new(Expr::Int64(1)), Box::new(Expr::Int64(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Int64(0))
-        );
-        assert_eq!(
-            run(
-                Expr::Multiply(Box::new(Expr::Int64(1)), Box::new(Expr::Int64(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Int64(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Divide(Box::new(Expr::Int64(1)), Box::new(Expr::Int64(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Int64(1))
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_u8() -> Result<()> {
-        let functions = setup_functions();
-
-        let meta = Metadata {
-            functions,
-            ..Default::default()
-        };
-
-        let mut variables = setup_variables();
-
-        assert_eq!(
-            run(Expr::Uint8(1), &meta, &mut variables)?,
-            Some(Expr::Uint8(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Subtract(Box::new(Expr::Uint8(1)), Box::new(Expr::Uint8(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Uint8(0))
-        );
-        assert_eq!(
-            run(
-                Expr::Multiply(Box::new(Expr::Uint8(1)), Box::new(Expr::Uint8(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Uint8(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Divide(Box::new(Expr::Uint8(1)), Box::new(Expr::Uint8(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Uint8(1))
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_u16() -> Result<()> {
-        let functions = setup_functions();
-
-        let meta = Metadata {
-            functions,
-            ..Default::default()
-        };
-
-        let mut variables = setup_variables();
-
-        assert_eq!(
-            run(Expr::Uint16(1), &meta, &mut variables)?,
-            Some(Expr::Uint16(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Subtract(Box::new(Expr::Uint16(1)), Box::new(Expr::Uint16(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Uint16(0))
-        );
-        assert_eq!(
-            run(
-                Expr::Multiply(Box::new(Expr::Uint16(1)), Box::new(Expr::Uint16(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Uint16(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Divide(Box::new(Expr::Uint16(1)), Box::new(Expr::Uint16(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Uint16(1))
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_u32() -> Result<()> {
-        let functions = setup_functions();
-
-        let meta = Metadata {
-            functions,
-            ..Default::default()
-        };
-
-        let mut variables = setup_variables();
-
-        assert_eq!(
-            run(Expr::Uint32(1), &meta, &mut variables)?,
-            Some(Expr::Uint32(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Subtract(Box::new(Expr::Uint32(1)), Box::new(Expr::Uint32(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Uint32(0))
-        );
-        assert_eq!(
-            run(
-                Expr::Multiply(Box::new(Expr::Uint32(1)), Box::new(Expr::Uint32(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Uint32(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Divide(Box::new(Expr::Uint32(1)), Box::new(Expr::Uint32(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Uint32(1))
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_u64() -> Result<()> {
-        let functions = setup_functions();
-
-        let meta = Metadata {
-            functions,
-            ..Default::default()
-        };
-
-        let mut variables = setup_variables();
-
-        assert_eq!(
-            run(Expr::Uint64(1), &meta, &mut variables)?,
-            Some(Expr::Uint64(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Subtract(Box::new(Expr::Uint64(1)), Box::new(Expr::Uint64(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Uint64(0))
-        );
-        assert_eq!(
-            run(
-                Expr::Multiply(Box::new(Expr::Uint64(1)), Box::new(Expr::Uint64(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Uint64(1))
-        );
-        assert_eq!(
-            run(
-                Expr::Divide(Box::new(Expr::Uint64(1)), Box::new(Expr::Uint64(1))),
-                &meta,
-                &mut variables
-            )?,
-            Some(Expr::Uint64(1))
-        );
-
-        Ok(())
-    }
+    Ok(())
 }

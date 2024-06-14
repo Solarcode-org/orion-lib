@@ -5,7 +5,7 @@ pub(crate) fn location<S: AsRef<str>>(location: usize, contents: S) -> Position 
     let mut loc = 1;
 
     for (count, tok) in contents.as_ref().chars().enumerate() {
-        if (count + 1) == location {
+        if count == location {
             break;
         }
 

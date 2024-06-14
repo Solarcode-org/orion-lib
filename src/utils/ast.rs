@@ -77,6 +77,9 @@ pub enum Expr {
     /// The variable creation expression.
     Let(String, Box<Expr>),
 
+    /// The **typed** variable creation expression.
+    TypeLet(Type, String, Box<Expr>),
+
     /// Re-assign an existing variable.
     Reassign(String, ReassignCode, Box<Expr>),
 
@@ -171,6 +174,48 @@ pub(crate) enum ReassignCode {
     Minus,
     Multiply,
     Divide,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Type {
+    /// The i8 type. (8-bit signed integer)
+    Int8,
+
+    /// The i16 type. (16-bit signed integer)
+    Int16,
+
+    /// The i32 type. (32-bit signed integer)
+    Int32,
+
+    /// The i64 type. (64-bit signed integer)
+    Int64,
+
+    /// The u8 type. (8-bit unsigned integer)
+    Uint8,
+
+    /// The u16 type. (16-bit unsigned integer)
+    Uint16,
+
+    /// The u32 type. (32-bit unsigned integer)
+    Uint32,
+
+    /// The u64 type. (64-bit unsigned integer)
+    Uint64,
+
+    /// The String type.
+    String,
+
+    /// The Boolean type.
+    Bool,
+
+    /// Character.
+    Char,
+
+    /// Array.
+    Array(Box<Option<Type>>),
+
+    /// Dynamic Integer.
+    DynInt
 }
 
 impl Add for W<Option<Expr>> {

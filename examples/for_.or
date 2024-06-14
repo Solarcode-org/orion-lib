@@ -1,43 +1,27 @@
-/* let array = [34, 56, 7, 9, 9, 12, 54, 6, 4, 3, 4, 3, 25, 32];
+:[int] array = [34, 56, 7, 9, 9, 12, 54, 6, 4, 3, 4, 3, 25, 32];
+
 $say("Array:", array);
 $say();
 
-let len = array.len();
-let rlen = len - 1;
+:u8 len = array.len();
+:u8 reverse_len = len - 1;
 
 # normal
-for item in array {
-    $say("Normal Item:", item);
-};
+for item in array do
+    $say("Normal Item:", item)
+end
 
-$say();
+; $say();
 
 # reverse.
-forx (let idx=rlen; idx >= 0; idx -= 1) {
-    $say("Reverse Item:", array[idx]);
-};
+forx (:u8 idx = reverse_len; idx >= 0; idx -= 1) do
+    $say("Reverse Item:", array[idx])
+end
 
-$say();
+; $say();
 
 # skip 2
-forx (let idx=0; idx < len; idx += 2) {
-    $say("Skip Item:", array[idx]);
-}; */
+forx (idx = 0; idx < len; idx += 2) do
+    $say("Skip Item:", array[idx])
+end
 
-/* let array = [34, 56, 7, 9, 9, 12, 54, 6, 4, 3, 4, 3, 25, 32, 350a];
-let sum = 0;
-
-for item in array {
-    sum += item;
-};
-
-$say(sum); */
-
-$say("Play e4 or face the consequences...");
-$say("Play e4 or face the consequences...");
-$say("Play e4 or face the consequences...");
-$say("Play e4 or face the consequences...");
-$say("Play e4 or face the consequences...");
-
-let move = ask("Play a move :D >> ");
-$say("Muhfsuafhduisfhds", move);
