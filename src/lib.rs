@@ -16,7 +16,7 @@
 //! use color_eyre::Result;
 //!
 //! fn main() -> Result<()> {
-//!     run_contents("say(\"Hello, world!\")".to_string(), false)?;
+//!     run_contents("$say(\"Hello, world!\")".to_string(), false)?;
 //!     Ok(())
 //! }
 //! ```
@@ -57,7 +57,7 @@ lalrpop_mod!(
 /// use color_eyre::Result;
 ///
 /// fn main() -> Result<()> {
-///     run_contents("say(\"Hello, world!\")".to_string(), false)?;
+///     run_contents("$say(\"Hello, world!\")".to_string(), false)?;
 ///     Ok(())
 /// }
 /// ```

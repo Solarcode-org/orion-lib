@@ -1,4 +1,4 @@
-/// The LR(1) Parser for Orion.
+//! The LR(1) Parser for Orion.
 
 use crate::utils::ast::{Expr, OpCode, CompCode, ReassignCode, Type};
 use std::str::FromStr;
@@ -126,9 +126,9 @@ Expr: Expr = {
     ":" <t:Type> <i:Ident> "=" <e:Expr> => Expr::TypeLet(t, i, Box::new(e)),
     Reassign,
 
-    #[precedence(level="2")] #[assoc(side="left")]
     "if" <c:Expr> <s:Scope> => Expr::If(Box::new(c), Box::new(s)),
-    "if" <c:Expr> <s:Scope> "else" <e:Scope> => Expr::IfElse(Box::new(c), Box::new(s), Box::new(e)),
+    "if" <c:Expr> <e:Else> => Expr::IfElse(Box::new(c), e.0, e.1),
+
     "for" <i:Ident> "in" <e:Expr> <s:Scope> => Expr::For(i, Box::new(e), Box::new(s)),
     "fn" <i:Ident> "[" <e:Idents> "]" <s:Scope> => Expr::Func(i, e, Box::new(s)),
     "fn" <i:Ident> <s:Scope> => Expr::Func(i, vec![], Box::new(s)),
@@ -155,6 +155,30 @@ Scope: Expr = {
         }
     },
     "ignore" => Expr::Scope(vec![]),
+};
+
+Else: (Box<Expr>, Box<Expr>) = {
+    "{" <c:Statements> "}" "else" "{" <e:Statements> "}" =>? {
+        if braces {
+            Ok((Box::new(Expr::Scope(c)), Box::new(Expr::Scope(e))))
+        } else {
+            Err(ParseError::User { error: "Cannot use scopes with braces in normal mode." })
+        }
+    },
+    "do" <c:Statements> "or" "else" <e:Statements> "end" =>? {
+        if !braces {
+            Ok((Box::new(Expr::Scope(c)), Box::new(Expr::Scope(e))))
+        } else {
+            Err(ParseError::User { error: "Cannot use scopes with do/else/end in braces mode." })
+        }
+    },
+    "ignore" "else" <e:Statements> "end" =>? {
+        if !braces {
+            Ok((Box::new(Expr::Scope(vec![])), Box::new(Expr::Scope(e))))
+        } else {
+            Err(ParseError::User { error: "Cannot use scopes with else/end in braces mode." })
+        }
+    },
 };
 
 pub Statements: Vec<Option<Expr>> = {
@@ -189,6 +213,7 @@ String: String = r#""(\\([tnr"]|[0-9a-fA-F]{2}|u[0-9a-fA-F]+)|[^"])+""# => {
 
     string.to_string()
 };
+
 Int: i128 = r"-?[0-9]+" =>? i128::from_str(<>).map_err(|_| ParseError::User { error: "Number is too big." });
 Char: char = r#"'.*'|'\\([tnr'])'"# =>? {
     let ch_str = &<>[1..<>.len()-1];
