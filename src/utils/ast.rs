@@ -7,13 +7,16 @@ use crate::utils::orion::{CustomFunctions, Metadata, Variables};
 use crate::prelude::*;
 use crate::types::arrays::Array;
 use crate::types::bool::Bool;
-use crate::types::numbers::{Numeric, Uint16, Uint8, Uint32, Uint64};
+use crate::types::numbers::{Numeric, Uint16, Uint8, Uint32, Uint64, Int8, Int16, Int32, Int64, Float};
 use crate::types::ObjectHolder;
 use crate::types::strings::Str;
 
 /// The Abstract Syntax Tree (AST) for Orion.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
+    /// The f32 type. (32-bit floating point number)
+    Float(f32),
+
     /// The i8 type. (8-bit signed integer)
     Int8(i8),
 
@@ -52,18 +55,6 @@ pub enum Expr {
 
     /// Array type.
     Array(Vec<Expr>),
-
-    // /// The addition expression.
-    // Add(Box<Expr>, Box<Expr>),
-    //
-    // /// The subtraction expression.
-    // Subtract(Box<Expr>, Box<Expr>),
-    //
-    // /// The multiplication expression.
-    // Multiply(Box<Expr>, Box<Expr>),
-    //
-    // /// The division expression.
-    // Divide(Box<Expr>, Box<Expr>),
 
     /// Mathematical Operations.
     Op(Box<Expr>, OpCode, Box<Expr>),
@@ -128,16 +119,17 @@ impl Expr {
         custom_functions: &mut CustomFunctions) -> Result<ObjectHolder>
     {
         Ok(ObjectHolder(match self {
-                Expr::Int8(_n) => /*Uint8::new(*_n)*/todo!(),
-                Expr::Int16(_n) => /*Uint8::new(*_n)*/todo!(),
-                Expr::Int32(_n) => /*Uint8::new(*_n)*/todo!(),
-                Expr::Int64(_n) => /*Uint8::new(*_n)*/todo!(),
+                Expr::Int8(n) => Box::new(Int8::new((*n).into())),
+                Expr::Int16(n) => Box::new(Int16::new((*n).into())),
+                Expr::Int32(n) => Box::new(Int32::new((*n).into())),
+                Expr::Int64(n) => Box::new(Int64::new(*n)),
                 Expr::Uint8(n) => Box::new(Uint8::new((*n).into())),
                 Expr::Uint16(n) => Box::new(Uint16::new((*n).into())),
                 Expr::Uint32(n) => Box::new(Uint32::new((*n).into())),
                 Expr::Uint64(n) => Box::new(Uint64::new((*n).try_into().with_context(
                     || "Could not convert number to correct type."
                 )?)),
+                Expr::Float(f) => Box::new(Float::new(*f)),
                 Expr::String(s) => Box::new(Str::new(s.to_string())),
                 Expr::Bool(b) => Box::new(Bool::new(*b)),
                 Expr::Array(array) => Box::new(
@@ -215,7 +207,10 @@ pub(crate) enum Type {
     Array(Box<Option<Type>>),
 
     /// Dynamic Integer.
-    DynInt
+    DynInt,
+
+    /// Float.
+    Float
 }
 
 impl Add for W<Option<Expr>> {
@@ -223,6 +218,9 @@ impl Add for W<Option<Expr>> {
 
     fn add(self, rhs: Self) -> Self::Output {
         let (a, b): (i128, i128) = match (self.0, rhs.0) {
+            (Some(Expr::Float(f)), Some(Expr::Float(g))) => {
+                return Ok(Some(Expr::Float(f + g)))
+            },
             (Some(Expr::Int8(a)), Some(Expr::Int8(b))) => (a.into(), b.into()),
             (Some(Expr::Int16(a)), Some(Expr::Int16(b))) => (a.into(), b.into()),
             (Some(Expr::Int32(a)), Some(Expr::Int32(b))) => (a.into(), b.into()),
@@ -468,6 +466,13 @@ impl PartialOrd<Self> for W<Option<Expr>> {
                     Expr::Uint16(i) => Some((*i).into()),
                     Expr::Uint32(i) => Some((*i).into()),
                     Expr::Uint64(i) => Some((*i).into()),
+                    Expr::Float(f) => {
+                        if let Expr::Float(b) = b {
+                            return (*f).partial_cmp(b);
+                        }
+
+                        None
+                    }
                     _ => None,
                 };
 

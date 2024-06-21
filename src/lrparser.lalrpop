@@ -56,6 +56,7 @@ Term: Expr = {
             Err(ParseError::User { error: "Number is too big." })
         }
     },
+    Float => Expr::Float(<> as f32),
     String => Expr::String(<>),
     Char =>? Ok(Expr::Char(<>)),
     "true" => Expr::Bool(true),
@@ -103,6 +104,8 @@ Type: Type = {
     "int" => Type::DynInt,
     "bool" => Type::Bool,
     "char" => Type::Char,
+    "float" => Type::Float,
+    "f32" => Type::Float,
     "[" <t:Type?> "]" => Type::Array(Box::new(t)),
 };
 
@@ -119,7 +122,7 @@ Expr: Expr = {
 
     <t:Term> "." <i:Ident> => Expr::Property(Box::new(t), i),
     <t:Term> "." <i:Ident> "(" <a:Exprs> ")" => Expr::Method(Box::new(t), i, a),
-    Scope => <>,
+    Scope,
 
     #[precedence(level="1")] #[assoc(side="left")]
     "let" <i:Ident> "=" <e:Expr> => Expr::Let(i, Box::new(e)),
@@ -215,6 +218,7 @@ String: String = r#""(\\([tnr"]|[0-9a-fA-F]{2}|u[0-9a-fA-F]+)|[^"])+""# => {
 };
 
 Int: i128 = r"-?[0-9]+" =>? i128::from_str(<>).map_err(|_| ParseError::User { error: "Number is too big." });
+Float: f64 = r"-?[0-9]+\.[0-9]+" =>? f64::from_str(<>).map_err(|_| ParseError::User { error: "Float is too big." });
 Char: char = r#"'.*'|'\\([tnr'])'"# =>? {
     let ch_str = &<>[1..<>.len()-1];
 

@@ -43,6 +43,7 @@ mod utils;
 
 lalrpop_mod!(
     #[allow(missing_docs)]
+    #[allow(clippy::type_complexity)]
     lrparser
 );
 
@@ -298,7 +299,7 @@ fn run(
                 Variable::None(_) => None,
                 Variable::Array(array, _) => Some(Expr::Array(array.to_vec())),
                 Variable::Char(c, _) => Some(Expr::Char(*c)),
-                _ => unimplemented!(),
+                Variable::Float(f, _) => Some(Expr::Float(*f)),
             };
 
             Ok(var)
@@ -573,8 +574,7 @@ fn garbage(variables: &mut Variables, scope_: &usize) {
         Variable::Uint16(_, scope) => scope_ >= scope,
         Variable::Uint32(_, scope) => scope_ >= scope,
         Variable::Uint64(_, scope) => scope_ >= scope,
-        Variable::_Float32(_, scope) => scope_ >= scope,
-        Variable::_Float64(_, scope) => scope_ >= scope,
+        Variable::Float(_, scope) => scope_ >= scope,
         Variable::None(scope) => scope_ >= scope,
         Variable::Array(_, scope) => scope_ >= scope,
         Variable::Char(_, scope) => scope_ >= scope,
@@ -600,6 +600,7 @@ fn variable_expr_eq(expr: Option<Expr>, scope: usize) -> Variable {
         Expr::String(s) => Variable::String(s, scope),
         Expr::Array(array) => Variable::Array(array, scope),
         Expr::Char(c) => Variable::Char(c, scope),
+        Expr::Float(f) => Variable::Float(f, scope),
         _ => unimplemented!(),
     }
 }
@@ -617,6 +618,7 @@ fn expr_variable_eq(var: &Variable) -> (Option<Expr>, usize) {
         Variable::String(s, scope) => (Some(Expr::String(s.to_string())), *scope),
         Variable::Array(array, scope) => (Some(Expr::Array(array.to_vec())), *scope),
         Variable::Char(c, scope) => (Some(Expr::Char(*c)), *scope),
+        Variable::Float(f, scope) => (Some(Expr::Float(*f)), *scope),
         _ => unimplemented!(),
     }
 }
@@ -632,6 +634,7 @@ fn check_type(expr: &Expr, ty: &Type, line: usize) -> Result<()> {
         (Expr::Uint32(_), Type::Uint32) | (Expr::Uint32(_), Type::DynInt) => {}
         (Expr::Uint64(_), Type::Uint64) | (Expr::Uint64(_), Type::DynInt) => {}
         (Expr::String(_), Type::String) => {}
+        (Expr::Float(_), Type::Float) => {},
         (Expr::Bool(_), Type::Bool) => {}
         (Expr::Char(_), Type::Char) => {}
         (Expr::Array(array), Type::Array(ty)) => {

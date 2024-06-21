@@ -20,3 +20,8 @@ $say("Did you know 12 * 5 is", prod, "?"); # See next example for formatted stri
 
 # Call the user.
 $say(fmt, "Come here.");
+
+# Decimals also work, though only till f32...
+:float pi = 3.141592653589793;
+
+$say(pi)

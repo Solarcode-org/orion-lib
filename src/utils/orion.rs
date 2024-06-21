@@ -63,8 +63,7 @@ pub enum Variable {
     Uint64(u64, usize),
 
     /// Float variables.
-    _Float32(f32, usize),
-    _Float64(f64, usize),
+    Float(f32, usize),
 
     /// None.
     None(usize),
@@ -138,6 +137,7 @@ fn to_string(
             Expr::Uint16(n) => n.to_string(),
             Expr::Uint32(n) => n.to_string(),
             Expr::Uint64(n) => n.to_string(),
+            Expr::Float(f) => f.to_string(),
             Expr::Array(array) => {
                 let mut arr = String::from('[');
 
