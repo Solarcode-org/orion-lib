@@ -26,7 +26,6 @@
 
 use std::iter::zip;
 
-use color_eyre::install;
 use lalrpop_util::{lalrpop_mod, ParseError};
 
 use prelude::*;
@@ -35,6 +34,9 @@ use utils::orion::{Metadata, setup_functions, setup_variables, Variables};
 
 use crate::utils::ast::{CompCode, OpCode, ReassignCode, Type};
 use crate::utils::orion::{CustomFunctions, Function, Variable};
+
+pub use crate::utils::jit::{encode, decode};
+pub use color_eyre::install as setup_error_hooks;
 
 mod error;
 mod prelude;
@@ -63,8 +65,6 @@ lalrpop_mod!(
 /// }
 /// ```
 pub fn run_contents<S: ToString>(contents: S, use_braces: bool) -> Result<()> {
-    install()?;
-
     let contents = contents.to_string();
 
     if contents.is_empty() {
@@ -165,6 +165,45 @@ pub fn run_contents<S: ToString>(contents: S, use_braces: bool) -> Result<()> {
 
     Ok(())
 }
+
+/// Run an Abstract Syntax Tree.
+pub fn run_ast(ast: Vec<Option<Expr>>) -> Result<()> {
+    let mut metadata = Metadata {
+        functions: setup_functions(),
+        ..Default::default()
+    };
+
+    let mut variables = setup_variables();
+
+    let mut custom_functions = CustomFunctions::new();
+
+    let lib = f!("{}\n", include_str!("./lib/std.or"));
+
+    let result = lrparser::StatementsParser::new()
+        .parse(false, lib.leak())
+        .with_context(|| "Error in standard file.")?;
+
+    for expr in result {
+        run(expr, &metadata, &mut variables, &mut custom_functions).with_context(|| {
+            "Error in \
+        standard file."
+        })?;
+    }
+
+    for (count, expr) in ast.iter().enumerate() {
+        metadata.line = count + 1;
+
+        run(
+            expr.to_owned(),
+            &metadata,
+            &mut variables,
+            &mut custom_functions,
+        )?;
+    }
+
+    Ok(())
+}
+
 
 fn run(
     ast: Option<Expr>,

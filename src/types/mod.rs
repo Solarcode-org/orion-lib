@@ -9,8 +9,8 @@ pub(crate) mod strings;
 pub(crate) mod arrays;
 pub(crate) mod bool;
 
-pub(crate) trait Object {
+pub trait Object {
     fn call(&self, f: &str, args: Vec<Expr>) -> Result<Option<Expr>>;
 }
 
-pub(crate) struct ObjectHolder(pub Box<dyn Object>);
+pub struct ObjectHolder(pub Box<dyn Object>);

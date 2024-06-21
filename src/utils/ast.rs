@@ -2,17 +2,20 @@
 
 use std::cmp::Ordering;
 use std::ops::{Add, Div, Mul, Sub};
-use crate::run;
-use crate::utils::orion::{CustomFunctions, Metadata, Variables};
+
+use serde::{Deserialize, Serialize};
+
 use crate::prelude::*;
+use crate::run;
 use crate::types::arrays::Array;
 use crate::types::bool::Bool;
-use crate::types::numbers::{Numeric, Uint16, Uint8, Uint32, Uint64, Int8, Int16, Int32, Int64, Float};
+use crate::types::numbers::{Float, Int16, Int32, Int64, Int8, Numeric, Uint16, Uint32, Uint64, Uint8};
 use crate::types::ObjectHolder;
 use crate::types::strings::Str;
+use crate::utils::orion::{CustomFunctions, Metadata, Variables};
 
 /// The Abstract Syntax Tree (AST) for Orion.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum Expr {
     /// The f32 type. (32-bit floating point number)
     Float(f32),
@@ -141,16 +144,16 @@ impl Expr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum OpCode {
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub enum OpCode {
     Add,
     Subtract,
     Multiply,
     Divide,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompCode {
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub enum CompCode {
     Greater,
     Lesser,
     Equals,
@@ -159,8 +162,8 @@ pub(crate) enum CompCode {
     LesserEquals,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ReassignCode {
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub enum ReassignCode {
     Re,
     Plus,
     Minus,
@@ -168,8 +171,8 @@ pub(crate) enum ReassignCode {
     Divide,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Type {
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub enum Type {
     /// The i8 type. (8-bit signed integer)
     Int8,
 
