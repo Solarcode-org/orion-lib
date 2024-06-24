@@ -1,27 +1,28 @@
 # Print the Orion version.
-$say("Hello from Orion version", __env_version);
+$say("Hello from Orion version", __env_version)
 
 # Ask the user their name.
-:str name = ask("What is your name? ");
+:str name = ask("What is your name? ")
 
 # Print the user's name.
-$say("Hello", name);
+$say("Hello", name)
 
 # Find the product of 12 and 5 (60).
-:u8 prod = 12 * 5;
+:u8 prod = 12 * 5
 
 # Print the product.
-$say("Did you know 12 * 5 is", prod, "?"); # See next example for formatted strings so you can remove the space before
+$say("Did you know 12 * 5 is", prod, "?") # See next example for formatted strings so you can remove the space before
                                           # the question mark.
 
+/*
 # Formatted string.
-:str fmt =
-    $join(name, "!");
+:str fmt = $join(name, "!")
 
 # Call the user.
-$say(fmt, "Come here.");
+$say(fmt, "Come here.")
 
 # Decimals also work, though only till f32...
-:float pi = 3.141592653589793;
+:float pi = 3.141592653589793
 
 $say(pi)
+*/

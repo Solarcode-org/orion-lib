@@ -8,6 +8,7 @@ fn main() -> Result<()> {
 
     run_contents(read_to_string("examples/hello.or")?, false)?;
 
+    println!("\n\n --- JIT Start --- \n");
     //#region JIT
     let j = encode(read_to_string("examples/hello.or")?, false, false)?;
 
@@ -17,6 +18,7 @@ fn main() -> Result<()> {
 
     println!("{ast:?}");
     //#endregion
+    println!("\n --- JIT End --- \n\n");
 
     run_ast(ast)?;
 

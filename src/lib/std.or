@@ -1,38 +1,38 @@
 fn ask[prompt] do
     $ask(prompt)
-end;
+end
 
 fn type[obj] do
-    $type(obj);
-end;
+    $type(obj)
+end
 
-let U8_MAX = 255;
-let U16_MAX = 65535;
-let U32_MAX = 4294967295;
-let U64_MAX = 18446744073709551615;
+let U8_MAX = 255
+let U16_MAX = 65535
+let U32_MAX = 4294967295
+let U64_MAX = 18446744073709551615
 
 fn max[array] do
-    let maximum = 0;
+    let maximum = 0
 
     for i in array do
         if i > maximum do
-            maximum = i;
-        end;
-    end;
+            maximum = i
+        end
+    end
 
     maximum
-end;
+end
 
 fn min[array] do
-    let minimum = max(array);
+    let minimum = max(array)
 
     for i in array do
         if i < minimum do
-            minimum = i;
-        end;
-    end;
+            minimum = i
+        end
+    end
 
     minimum
-end;
+end
 
-fn to_string[obj] ignore;
+fn to_string[obj] ignore

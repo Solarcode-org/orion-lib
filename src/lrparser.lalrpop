@@ -185,13 +185,13 @@ Else: (Box<Expr>, Box<Expr>) = {
 };
 
 pub Statements: Vec<Option<Expr>> = {
-    <a:Expr> <b:(";" Expr)*> ";" => {
+    "\n"* <a:Expr> <b:("\n"+ Expr)*> ";" "\n"* => {
         let mut statements = vec![Some(a)];
         statements.extend(b.into_iter().map(|e| Some(e.1)));
         statements.push(None);
         statements
     },
-    <a:Expr> <b:(";" Expr)*> => {
+    "\n"* <a:Expr> <b:("\n"+ Expr)*> "\n"* => {
         let mut statements = vec![Some(a)];
         statements.extend(b.into_iter().map(|e| Some(e.1)));
         statements
@@ -199,9 +199,10 @@ pub Statements: Vec<Option<Expr>> = {
 };
 
 match {
-    r"\s*" => { }, // The default whitespace skipping is disabled if an `ignore pattern` is specified
     r"#[^\n\r]*[\n\r]*" => { }, // Skip `# comments`
     r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/" => { },  // Skip `/* comments */`
+} else {
+    r"[\t\r\f\v ]" => { }, // The default whitespace skipping is disabled if an `ignore pattern` is specified
     _ 
 }
 
