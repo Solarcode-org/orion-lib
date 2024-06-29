@@ -5,3 +5,4 @@ pub mod orion;
 pub(crate) mod location;
 
 pub mod jit;
+pub mod idle;

@@ -30,18 +30,20 @@ use lalrpop_util::{lalrpop_mod, ParseError};
 
 use prelude::*;
 use utils::ast::Expr;
-use utils::orion::{Metadata, setup_functions, setup_variables, Variables};
+use utils::orion::{setup_functions, setup_variables, Metadata, Variables};
 
 use crate::utils::ast::{CompCode, OpCode, ReassignCode, Type};
 use crate::utils::orion::{CustomFunctions, Function, Variable};
 
-pub use crate::utils::jit::{encode, decode};
 pub use color_eyre::install as setup_error_hooks;
+pub use utils::jit::{decode, encode};
 
 mod error;
 mod prelude;
 mod types;
 mod utils;
+
+pub use utils::idle::IdleRunner;
 
 lalrpop_mod!(
     #[allow(missing_docs)]
@@ -96,49 +98,48 @@ pub fn run_contents<S: ToString>(contents: S, use_braces: bool) -> Result<()> {
     let result = lrparser::StatementsParser::new().parse(use_braces, contents.clone().leak());
 
     let result = if result.is_err() {
-            Err(match result.err().unwrap() {
-                ParseError::InvalidToken { location } => {
-                    let loc = utils::location::location(location, contents);
-                    ParseError::InvalidToken { location: loc }
+        Err(match result.err().unwrap() {
+            ParseError::InvalidToken { location } => {
+                let loc = utils::location::location(location, contents);
+                ParseError::InvalidToken { location: loc }
+            }
+
+            ParseError::UnrecognizedEof { location, expected } => {
+                let loc = utils::location::location(location, contents);
+                ParseError::UnrecognizedEof {
+                    location: loc,
+                    expected,
                 }
+            }
 
-                ParseError::UnrecognizedEof { location, expected } => {
-                    let loc = utils::location::location(location, contents);
-                    ParseError::UnrecognizedEof {
-                        location: loc,
-                        expected,
-                    }
+            ParseError::UnrecognizedToken { token, expected } => {
+                let (loc1, token, loc2) = token;
+                let loc1 = utils::location::location(loc1, &contents);
+                let loc2 = utils::location::location(loc2, contents);
+
+                ParseError::UnrecognizedToken {
+                    token: (loc1, token, loc2),
+                    expected,
                 }
+            }
 
-                ParseError::UnrecognizedToken { token, expected } => {
-                    let (loc1, token, loc2) = token;
-                    let loc1 = utils::location::location(loc1, &contents);
-                    let loc2 = utils::location::location(loc2, contents);
+            ParseError::ExtraToken { token } => {
+                let (loc1, token, loc2) = token;
+                let loc1 = utils::location::location(loc1, &contents);
+                let loc2 = utils::location::location(loc2, contents);
 
-                    ParseError::UnrecognizedToken {
-                        token: (loc1, token, loc2),
-                        expected,
-                    }
+                ParseError::ExtraToken {
+                    token: (loc1, token, loc2),
                 }
+            }
 
-                ParseError::ExtraToken { token } => {
-                    let (loc1, token, loc2) = token;
-                    let loc1 = utils::location::location(loc1, &contents);
-                    let loc2 = utils::location::location(loc2, contents);
-
-                    ParseError::ExtraToken {
-                        token: (loc1, token, loc2),
-                    }
-                }
-
-                ParseError::User { error } => ParseError::User { error }, // ParseError::User
-            })
-        }
-        else {
-            result.map_err(|_| ParseError::User {
-                error: "impossible",
-            })
-        };
+            ParseError::User { error } => ParseError::User { error }, // ParseError::User
+        })
+    } else {
+        result.map_err(|_| ParseError::User {
+            error: "impossible",
+        })
+    };
 
     let ast: Vec<Option<Expr>> = result.unwrap_or_else(|e| {
         #[cfg(debug_assertions)]
@@ -204,7 +205,6 @@ pub fn run_ast(ast: Vec<Option<Expr>>) -> Result<()> {
     Ok(())
 }
 
-
 fn run(
     ast: Option<Expr>,
     meta: &Metadata,
@@ -257,27 +257,26 @@ fn run(
                 return Ok(res);
             }
 
-            let func: &Function = functions
-                .get(func.as_str())
-                .with_context(|| Errors::LineError {
-                    line,
-                    msg: f!("Could not find function `{func}`"),
-                })?;
+            let func: &Function =
+                functions
+                    .get(func.as_str())
+                    .with_context(|| Errors::LineError {
+                        line,
+                        msg: f!("Could not find function `{func}`"),
+                    })?;
 
             Ok(match func {
-                    Function::Void(f) => {
-                        f(args, meta, variables, custom_functions)
-                            .with_context(|| f!("Error on line {}", meta.line))?;
-                        return Ok(None);
-                    }
-                    Function::String(f) => Some(Expr::String(
-                            f(args, meta, variables, custom_functions)
-                                .with_context(|| f!("Error on line {}", meta.line))?
-                                .to_string(),
-                        )
-                    ),
+                Function::Void(f) => {
+                    f(args, meta, variables, custom_functions)
+                        .with_context(|| f!("Error on line {}", meta.line))?;
+                    return Ok(None);
                 }
-            )
+                Function::String(f) => Some(Expr::String(
+                    f(args, meta, variables, custom_functions)
+                        .with_context(|| f!("Error on line {}", meta.line))?
+                        .to_string(),
+                )),
+            })
         }
 
         Expr::Let(name, value) => {
@@ -673,7 +672,7 @@ fn check_type(expr: &Expr, ty: &Type, line: usize) -> Result<()> {
         (Expr::Uint32(_), Type::Uint32) | (Expr::Uint32(_), Type::DynInt) => {}
         (Expr::Uint64(_), Type::Uint64) | (Expr::Uint64(_), Type::DynInt) => {}
         (Expr::String(_), Type::String) => {}
-        (Expr::Float(_), Type::Float) => {},
+        (Expr::Float(_), Type::Float) => {}
         (Expr::Bool(_), Type::Bool) => {}
         (Expr::Char(_), Type::Char) => {}
         (Expr::Array(array), Type::Array(ty)) => {
