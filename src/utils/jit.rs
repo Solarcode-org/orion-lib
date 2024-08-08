@@ -2,7 +2,7 @@
 
 use lalrpop_util::ParseError;
 use crate::prelude::*;
-use crate::{lrparser, utils};
+use crate::{lrparser, lrbraces, utils};
 
 use serde_yaml::{to_string as yamlt, from_str as yamlf};
 use ron::{to_string, from_str};
@@ -16,7 +16,11 @@ pub fn encode<S: ToString>(contents: S, use_braces: bool, yaml: bool) -> Result<
         return Ok(String::new());
     }
 
-    let result = lrparser::StatementsParser::new().parse(use_braces, contents.clone().leak());
+    let result = if use_braces {
+        lrbraces::StatementsParser::new().parse(contents.clone().leak())
+    } else {
+        lrparser::StatementsParser::new().parse(contents.clone().leak())
+    };
 
     let result = if result.is_err() {
         Err(match result.err().unwrap() {

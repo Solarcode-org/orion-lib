@@ -51,6 +51,12 @@ lalrpop_mod!(
     lrparser
 );
 
+lalrpop_mod!(
+    #[allow(missing_docs)]
+    #[allow(clippy::type_complexity)]
+    lrbraces
+);
+
 /// Run the contents of an Orion file.
 ///
 /// NOTE: The file's CONTENT must be provided, not its PATH.
@@ -85,7 +91,7 @@ pub fn run_contents<S: ToString>(contents: S, use_braces: bool) -> Result<()> {
     let lib = f!("{}\n", include_str!("./lib/std.or"));
 
     let result = lrparser::StatementsParser::new()
-        .parse(false, lib.leak())
+        .parse(lib.leak())
         .with_context(|| "Error in standard file.")?;
 
     for expr in result {
@@ -95,7 +101,11 @@ pub fn run_contents<S: ToString>(contents: S, use_braces: bool) -> Result<()> {
         })?;
     }
 
-    let result = lrparser::StatementsParser::new().parse(use_braces, contents.clone().leak());
+    let result = if use_braces {
+        lrbraces::StatementsParser::new().parse(contents.clone().leak())
+    } else {
+        lrparser::StatementsParser::new().parse(contents.clone().leak())
+    };
 
     let result = if result.is_err() {
         Err(match result.err().unwrap() {
@@ -181,7 +191,7 @@ pub fn run_ast(ast: Vec<Option<Expr>>) -> Result<()> {
     let lib = f!("{}\n", include_str!("./lib/std.or"));
 
     let result = lrparser::StatementsParser::new()
-        .parse(false, lib.leak())
+        .parse(lib.leak())
         .with_context(|| "Error in standard file.")?;
 
     for expr in result {

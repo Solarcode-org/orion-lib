@@ -1,6 +1,6 @@
 use lalrpop_util::ParseError;
 
-use crate::lrparser;
+use crate::{lrparser, lrbraces};
 use crate::prelude::*;
 use crate::run;
 use crate::utils;
@@ -33,7 +33,7 @@ impl IdleRunner {
         let lib = f!("{}\n", include_str!("../lib/std.or"));
 
         let result = lrparser::StatementsParser::new()
-            .parse(false, lib.leak())
+            .parse(lib.leak())
             .with_context(|| "Error in standard file.")?;
 
         for expr in result {
@@ -59,7 +59,11 @@ impl IdleRunner {
             return Ok(false);
         }
 
-        let result = lrparser::StatementsParser::new().parse(self.braces, line);
+        let result = if self.braces {
+            lrbraces::StatementsParser::new().parse(line)
+        } else {
+            lrparser::StatementsParser::new().parse(line)
+        };
 
         let result = if result.is_err() {
             Err(match result.err().unwrap() {

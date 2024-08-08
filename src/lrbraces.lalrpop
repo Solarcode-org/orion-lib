@@ -143,16 +143,15 @@ Expr: Expr = {
 };
 
 Scope: Expr = {
-    "do" <Statements> "end" => {
+    "{" <Statements> "}" => {
             Expr::Scope(<>)
-    },
-    "ignore" => Expr::Scope(vec![]),
+    }
 };
 
 Else: (Box<Expr>, Box<Expr>) = {
-    "do" <c:Statements> "else" <e:Statements> "end" => {
+    "{" <c:Statements> "}" "else" "{" <e:Statements> "}" => {
             (Box::new(Expr::Scope(c)), Box::new(Expr::Scope(e)))
-    },
+    }
 };
 
 pub Statements: Vec<Option<Expr>> = {
