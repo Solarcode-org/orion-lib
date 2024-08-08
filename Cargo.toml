@@ -1,6 +1,6 @@
 [package]
 name = "orion_lib"
-version = "7.3.0"
+version = "7.4.0"
 edition = "2021"
 description = "A library for parsing and executing the Orion Programming Language"
 license-file = "LICENSE"
